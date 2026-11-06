@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Empire</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@500;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+  <canvas id="map"></canvas>
+  <canvas id="fx"></canvas>
+
+  <!-- PANTALLA DE INICIO -->
+  <section id="home" class="screen">
+    <div class="home-inner">
+      <h1 class="logo">EMPIRE</h1>
+      <p class="tagline">DOMINACIÓN MUNDIAL</p>
+      <div class="menu">
+        <button id="btnContinue" class="btn primary" hidden>CONTINUAR</button>
+        <button id="btnPlay" class="btn primary">JUGAR</button>
+        <button id="btnConfig" class="btn">CONFIGURACIÓN</button>
+      </div>
+      <p class="mode">Modo: <b>Ruleta mundial</b> · 194 países, solo queda uno</p>
+    </div>
+  </section>
+
+  <!-- CONFIGURACIÓN -->
+  <section id="config" class="screen modal" hidden>
+    <div class="card cfg">
+      <h2>CONFIGURACIÓN</h2>
+      <label class="row">Velocidad
+        <div class="seg" id="cfgSpeed">
+          <button data-v="1">1×</button><button data-v="1.5">1.5×</button><button data-v="2">2×</button><button data-v="3">3×</button>
+        </div>
+      </label>
+      <label class="row">Efectos de sonido <input type="checkbox" id="cfgSound"></label>
+      <label class="row">Volumen <input type="range" id="cfgVol" min="0" max="1" step="0.05"></label>
+      <button id="cfgReset" class="btn small danger">Borrar partida guardada</button>
+      <button id="cfgClose" class="btn primary">LISTO</button>
+    </div>
+  </section>
+
+  <!-- JUEGO -->
+  <section id="game" class="screen" hidden>
+    <header class="top">
+      <div>
+        <div class="title">EMPIRE</div>
+        <div class="sub" id="subtitle">TEMPORADA 1 · BATALLA 1</div>
+      </div>
+      <div class="top-right">
+        <button class="icon" id="btnPause" title="Pausa (espacio)" aria-label="Pausa">❚❚</button>
+        <button class="icon" id="btnMenu" title="Menú" aria-label="Menú">☰</button>
+        <div class="left-badge"><span id="leftCount">194</span><small>RESTANTES</small></div>
+      </div>
+    </header>
+
+    <div id="callouts"></div>
+
+    <div class="card panel" id="panel">
+      <div class="battle" id="battle">
+        <div class="side" id="sideA"></div>
+        <div class="mid">
+          <svg class="swords" id="swords" viewBox="0 0 64 64" aria-hidden="true">
+            <g class="s1"><path d="M10 6 L46 50" stroke="#dfe6f0" stroke-width="5" stroke-linecap="round"/><path d="M40 52 l10 -10" stroke="#e7b84a" stroke-width="5" stroke-linecap="round"/><path d="M47 51 l6 6" stroke="#9a6a2c" stroke-width="5" stroke-linecap="round"/></g>
+            <g class="s2"><path d="M54 6 L18 50" stroke="#dfe6f0" stroke-width="5" stroke-linecap="round"/><path d="M24 52 l-10 -10" stroke="#e7b84a" stroke-width="5" stroke-linecap="round"/><path d="M17 51 l-6 6" stroke="#9a6a2c" stroke-width="5" stroke-linecap="round"/></g>
+          </svg>
+          <div class="dxp" id="dxp">DADOS<br>× PODER</div>
+        </div>
+        <div class="side" id="sideD"></div>
+      </div>
+      <div class="board" id="board" hidden></div>
+    </div>
+
+    <div id="paused" class="pause-veil" hidden>PAUSA</div>
+  </section>
+
+  <!-- FIN -->
+  <section id="end" class="screen modal" hidden>
+    <div class="card cfg end">
+      <img id="endFlag" alt="">
+      <h2 id="endTitle"></h2>
+      <p id="endSub"></p>
+      <button id="endNew" class="btn primary">NUEVA PARTIDA</button>
+      <button id="endMenu" class="btn">MENÚ</button>
+    </div>
+  </section>
+</div>
+<script src="vendor/topojson-client.min.js"></script>
+<script src="data.js"></script>
+<script src="game.js"></script>
+</body>
+</html>
