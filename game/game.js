@@ -176,24 +176,35 @@ function invalidate(o) { delete ownerCache[o]; borderPath = null; dirty = true; 
 const mapCv = $('map'), fxCv = $('fx'), mctx = mapCv.getContext('2d'), fctx = fxCv.getContext('2d');
 let vw = 0, vh = 0, dpr = 1, dirty = true;
 const cam = { x: W / 2, y: H / 2, s: 1 };
-const view = { top: 70, bottom: 280 }; // zona útil del mapa (debajo del encabezado, arriba del panel)
+const view = { top: 70, bottom: 280, right: 0 }; // zona útil del mapa (debajo del encabezado, arriba del panel)
 function resize() {
   dpr = Math.min(2, window.devicePixelRatio || 1); vw = innerWidth; vh = innerHeight;
   [mapCv, fxCv].forEach(c => { c.width = Math.round(vw * dpr); c.height = Math.round(vh * dpr); });
-  view.bottom = (vh <= 640 ? 250 : 280); dirty = true;
+  // celular horizontal: el panel va a la derecha y el mapa ocupa el resto
+  const side = vw > vh && vh < 520;
+  document.body.classList.toggle('side', side);
+  view.top = side ? 58 : 70;
+  view.right = side ? Math.min(380, vw * .46) + 16 : 0;
+  view.bottom = side ? 0 : (vh <= 640 ? 250 : 280); dirty = true;
   if (!inGame) Object.assign(cam, worldCam());
 }
 addEventListener('resize', resize);
 function camFor(bb, pad = 1.15, maxS = 60, minSize = 0) {
   if (minSize) { const w = bb[2] - bb[0], h = bb[3] - bb[1], gx = Math.max(0, minSize - w) / 2, gy = Math.max(0, minSize * .7 - h) / 2;
     bb = [bb[0] - gx, bb[1] - gy, bb[2] + gx, bb[3] + gy]; }
-  const usableH = Math.max(120, vh - view.top - view.bottom);
+  const [uw, uh] = usable();
   const w = Math.max(bb[2] - bb[0], 4), h = Math.max(bb[3] - bb[1], 4);
-  const s = Math.min(maxS, vw / (w * pad), usableH / (h * pad));
-  const [cx, cy] = bbCenter(bb);
-  return { x: cx, y: cy + (view.bottom - view.top) / 2 / s, s }; // centrar en la zona libre entre encabezado y panel
+  const s = Math.min(maxS, uw / (w * pad), uh / (h * pad));
+  return centered(bbCenter(bb), s);
 }
-const worldCam = () => camFor([0, 0, W, H], 1.02);
+const usable = () => [Math.max(160, vw - view.right), Math.max(120, vh - view.top - view.bottom)];
+// centrar en la zona libre (entre encabezado y panel)
+const centered = ([cx, cy], s) => ({ x: cx + view.right / 2 / s, y: cy + (view.bottom - view.top) / 2 / s, s });
+// mundo: en pantallas altas se acerca hasta 1.35× y recorta los bordes del Pacífico para no dejar el mapa diminuto
+function worldCam() {
+  const [uw, uh] = usable(), contain = Math.min(uw / W, uh / H) / 1.02;
+  return centered([W / 2 + 55, H / 2], Math.min(Math.max(uw / W, uh / H), contain * 1.35));
+}
 function flyTo(t, ms) {
   const a = { ...cam }, la = Math.log(a.s), lb = Math.log(t.s);
   return tween(ms, k => {
@@ -248,13 +259,14 @@ function renderMap() {
   if (!borderPath) { borderPath = new Path2D(); owners.forEach(o => ownerParts(o).parts.forEach(p => borderPath.addPath(p.path))); }
   ctx.strokeStyle = 'rgba(8,12,20,.55)'; ctx.lineWidth = 0.9 / cam.s; ctx.stroke(borderPath);
   // microestados: punto con bandera para que se vean en la vista mundial
-  for (const o of owners) {
-    const f = ownerParts(o).focus; if ((f[2] - f[0]) * cam.s > 7 || (f[3] - f[1]) * cam.s > 7) continue;
-    const [cx, cy] = bbCenter(f); if (cx < x0 || cx > x1 || cy < y0 || cy > y1) continue;
-    const r = 3.6 / cam.s; ctx.save(); ctx.beginPath(); ctx.arc(cx, cy, r, 0, 7); ctx.clip();
+  const marker = (o, minPx, rPx, lw) => {
+    const f = ownerParts(o).focus; if ((f[2] - f[0]) * cam.s > minPx || (f[3] - f[1]) * cam.s > minPx) return;
+    const [cx, cy] = bbCenter(f); if (cx < x0 || cx > x1 || cy < y0 || cy > y1) return;
+    const r = rPx / cam.s; ctx.save(); ctx.beginPath(); ctx.arc(cx, cy, r, 0, 7); ctx.clip();
     if (flagLo[o]) ctx.drawImage(flagLo[o], ...flagRect([cx - r, cy - r, cx + r, cy + r], [cx, cy], o)); ctx.restore();
-    ctx.beginPath(); ctx.arc(cx, cy, r, 0, 7); ctx.strokeStyle = 'rgba(255,255,255,.8)'; ctx.lineWidth = 0.8 / cam.s; ctx.stroke();
-  }
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, 7); ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.lineWidth = lw / cam.s; ctx.stroke();
+  };
+  for (const o of owners) marker(o, 7, 3.6, 0.8);
   // foco: oscurecer el resto y resaltar atacante/defensor
   if (focus.dim > 0) {
     ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.fillStyle = `rgba(8,12,20,${0.62 * focus.dim})`;
@@ -263,6 +275,7 @@ function renderMap() {
       const P = ownerParts(o).parts; drawFlagParts(ctx, o, P, true, x0, y0, x1, y1);
       ctx.strokeStyle = `rgba(255,255,255,${0.95 * focus.dim})`; ctx.lineWidth = 2.2 / cam.s; ctx.lineJoin = 'round';
       P.forEach(p => ctx.stroke(p.path));
+      marker(o, 40, 16, 2.5); // islas diminutas: que se vean al hacer zoom
     }
   }
 }
@@ -401,8 +414,12 @@ async function battle() {
   const [dp, ap] = [ownerParts(d), ownerParts(a)].sort((x, y) => (x.main[2] - x.main[0]) * (x.main[3] - x.main[1]) - (y.main[2] - y.main[0]) * (y.main[3] - y.main[1]));
   const around = bbGrow(dp.main, 1.2); let bb = dp.main;
   ap.parts.forEach(p => { if (bbHit(p.bb, around)) bb = bbUnion(bb, [Math.max(p.bb[0], around[0]), Math.max(p.bb[1], around[1]), Math.min(p.bb[2], around[2]), Math.min(p.bb[3], around[3])]); });
+  // islas chicas y separadas por mar: encuadrar a las dos
+  const both = bbUnion(ownerParts(a).focus, ownerParts(d).focus);
+  const islands = both[2] - both[0] < 300 && both[3] - both[1] < 300;
+  if (islands) bb = bbUnion(bb, both);
   Sfx.whoosh(.8);
-  await flyTo(camFor(bb, 1.15, 80, 55), 1000);
+  await flyTo(camFor(bb, islands ? 1.5 : 1.15, 80, 55), 1000); // margen extra: los marcadores de islas son más grandes que su territorio
 
   // 5) carteles + datos
   const sa = S.st[a], sd = S.st[d], boss = bossOf();
