@@ -152,8 +152,9 @@ function neighborsOf(o) {
   regionsOf(o).forEach(r => C[r].adj.forEach(n => { const ow = S.owner[n]; if (ow && ow !== o) set.add(ow); }));
   return [...set];
 }
-// poder: escalón por población (1.0 – 1.5) + 0.1 por victoria (en décimas para evitar errores de coma flotante)
-const basePow = pop => Math.max(10, Math.min(15, 11 + Math.floor(Math.log10(pop / 1e6) / 0.8)));
+// poder: 1 + 0.3·log10(millones de hab.), mínimo ×1.0, + 0.1 por victoria (en décimas para evitar errores de coma flotante).
+// Más pendiente que el escalón original: con él, un gigante perdía ~65 % contra un microestado con dado extra.
+const basePow = pop => Math.max(10, Math.round(10 + 3 * Math.log10(pop / 1e6)));
 const powerOf = o => basePow(S.st[o].pop) + S.st[o].wins;
 const bossOf = () => alive().reduce((a, b) => (S.st[b].area > S.st[a].area ? b : a));
 
@@ -555,8 +556,8 @@ resize(); refreshHome(); show('home');
 requestAnimationFrame(frame);
 loadFlags().then(() => { dirty = true; });
 
-// autocomprobación de la fórmula de poder (valores observados en los videos de referencia)
-console.assert([[800, 10], [422e3, 10], [1.24e6, 11], [2.3e6, 11], [13.7e6, 12], [34e6, 12], [64e6, 13], [143e6, 13], [365e6, 14]]
+// autocomprobación de la fórmula de poder
+console.assert([[800, 10], [422e3, 10], [1.24e6, 10], [3.5e6, 12], [11e6, 13], [44e6, 15], [210e6, 17], [330e6, 18], [1.4e9, 19]]
   .every(([p, v]) => basePow(p) === v), 'basePow no coincide con la referencia');
 window.__empire = { get S() { return S; }, get clock() { return clock; }, neighborsOf, basePow };
 })();
