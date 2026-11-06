@@ -77,15 +77,17 @@ const proj = (lon, lat) => [(lon + 180) / 360 * W, (Y0 - my(Math.max(-80, Math.m
 function partsOf(geom) {
   const polys = geom.type === 'Polygon' ? [geom.coordinates] : geom.type === 'MultiPolygon' ? geom.coordinates : [];
   return polys.map(poly => {
-    const path = new Path2D(); let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+    const path = new Path2D(); let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9, A = 0, gx = 0, gy = 0, px, py;
     poly.forEach((ring, ri) => {
       let off = 0, prev = null; // desenrollar anillos que cruzan el antimeridiano (evita franjas de lado a lado)
       ring.forEach(([lo, la], i) => { if (prev != null) { if (lo + off - prev > 180) off -= 360; else if (lo + off - prev < -180) off += 360; }
         prev = lo + off; const [x, y] = proj(lo + off, la); i ? path.lineTo(x, y) : path.moveTo(x, y);
-        if (ri === 0) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; } });
+        if (ri === 0) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+          if (i) { const cr = px * y - x * py; A += cr; gx += (px + x) * cr; gy += (py + y) * cr; } px = x; py = y; } });
       path.closePath();
     });
-    return { path, bb: [x0, y0, x1, y1], size: (x1 - x0) * (y1 - y0) };
+    const c = Math.abs(A) > 1e-9 ? [gx / (3 * A), gy / (3 * A)] : [(x0 + x1) / 2, (y0 + y1) / 2];
+    return { path, bb: [x0, y0, x1, y1], c, size: (x1 - x0) * (y1 - y0) };
   }).filter(p => p.size > 0);
 }
 // territorio fuera de juego (gris)
@@ -101,12 +103,25 @@ const bbHit = (a, b) => a[0] <= b[2] && b[0] <= a[2] && a[1] <= b[3] && b[1] <= 
 /* ---------------- banderas ---------------- */
 const flagSrc = c => `flags/${c}.svg`;
 const flagImg = {}, flagLo = {}, flagHi = new Map();
+const ar = c => C[c].ar || 1.5;
+function raster(img, c, h) {
+  const cv = document.createElement('canvas'); cv.height = h; cv.width = Math.round(h * ar(c));
+  cv.getContext('2d').drawImage(img, 0, 0, cv.width, h); return cv;
+}
+// rectángulo donde dibujar la bandera: respeta la proporción (máx. 15 % de deformación), cubre todo el país
+// y se centra en su centro visual, no en el del rectángulo que lo contiene
+function flagRect(bb, center, c) {
+  const w = bb[2] - bb[0], h = bb[3] - bb[1], r = ar(c);
+  const a = Math.min(r * 1.15, Math.max(r / 1.15, w / h));
+  let fw = w, fh = w / a; if (fh < h) { fh = h; fw = h * a; }
+  const cl = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+  return [cl(center[0] - fw / 2, bb[2] - fw, bb[0]), cl(center[1] - fh / 2, bb[3] - fh, bb[1]), fw, fh];
+}
 function loadFlags() {
   return Promise.all(PLAYABLE.map(c => new Promise(res => {
     const img = new Image(); img.onload = () => {
       flagImg[c] = img;
-      const cv = document.createElement('canvas'); cv.width = 320; cv.height = 240;
-      cv.getContext('2d').drawImage(img, 0, 0, 320, 240); flagLo[c] = cv; res();
+      flagLo[c] = raster(img, c, 200); res();
     }; img.onerror = res; img.src = flagSrc(c);
   })));
 }
@@ -114,8 +129,7 @@ function loadFlags() {
 function hiFlag(c) {
   if (flagHi.has(c)) return flagHi.get(c);
   const img = flagImg[c]; if (!img) return flagLo[c];
-  const cv = document.createElement('canvas'); cv.width = 2048; cv.height = 1536;
-  cv.getContext('2d').drawImage(img, 0, 0, 2048, 1536);
+  const cv = raster(img, c, 1400);
   flagHi.set(c, cv); if (flagHi.size > 6) flagHi.delete(flagHi.keys().next().value);
   return cv;
 }
@@ -193,7 +207,7 @@ const flagMid = new Map();
 function midFlag(c) {
   if (flagMid.has(c)) { const v = flagMid.get(c); flagMid.delete(c); flagMid.set(c, v); return v; }
   const img = flagImg[c]; if (!img) return flagLo[c];
-  const cv = document.createElement('canvas'); cv.width = 1024; cv.height = 768; cv.getContext('2d').drawImage(img, 0, 0, 1024, 768);
+  const cv = raster(img, c, 640);
   flagMid.set(c, cv); if (flagMid.size > 30) flagMid.delete(flagMid.keys().next().value);
   return cv;
 }
@@ -204,7 +218,7 @@ function drawFlagParts(ctx, o, parts, hi, x0, y0, x1, y1) {
     const b = p.bb; if (b[2] < x0 || b[0] > x1 || b[3] < y0 || b[1] > y1) continue;
     if ((b[2] - b[0]) * cam.s < 0.6 && (b[3] - b[1]) * cam.s < 0.6) continue;
     ctx.save(); ctx.clip(p.path);
-    if (img) ctx.drawImage(img, b[0], b[1], b[2] - b[0], b[3] - b[1]); else { ctx.fillStyle = '#555'; ctx.fill(p.path); }
+    if (img) ctx.drawImage(img, ...flagRect(b, p.c, o)); else { ctx.fillStyle = '#555'; ctx.fill(p.path); }
     ctx.restore();
   }
 }
@@ -233,7 +247,7 @@ function renderMap() {
     const f = ownerParts(o).focus; if ((f[2] - f[0]) * cam.s > 7 || (f[3] - f[1]) * cam.s > 7) continue;
     const [cx, cy] = bbCenter(f); if (cx < x0 || cx > x1 || cy < y0 || cy > y1) continue;
     const r = 3.6 / cam.s; ctx.save(); ctx.beginPath(); ctx.arc(cx, cy, r, 0, 7); ctx.clip();
-    if (flagLo[o]) ctx.drawImage(flagLo[o], cx - r * 1.4, cy - r, r * 2.8, r * 2); ctx.restore();
+    if (flagLo[o]) ctx.drawImage(flagLo[o], ...flagRect([cx - r, cy - r, cx + r, cy + r], [cx, cy], o)); ctx.restore();
     ctx.beginPath(); ctx.arc(cx, cy, r, 0, 7); ctx.strokeStyle = 'rgba(255,255,255,.8)'; ctx.lineWidth = 0.8 / cam.s; ctx.stroke();
   }
   // foco: oscurecer el resto y resaltar atacante/defensor
@@ -260,7 +274,7 @@ function renderFx(now) {
     const img = hiFlag(wipe.o);
     for (const p of wipe.parts) {
       ctx.save(); ctx.clip(p.path); ctx.beginPath(); ctx.arc(wipe.cx, wipe.cy, wipe.r, 0, 7); ctx.clip();
-      ctx.drawImage(img, p.bb[0], p.bb[1], p.bb[2] - p.bb[0], p.bb[3] - p.bb[1]); ctx.restore();
+      ctx.drawImage(img, ...flagRect(p.bb, p.c, wipe.o)); ctx.restore();
     }
   }
   if (marker) {
@@ -506,7 +520,7 @@ function start(saved) {
 function finish() {
   const w = alive()[0]; store(SAVE_KEY, null);
   $('endFlag').src = flagSrc(w); $('endTitle').textContent = `¡${up(C[w].name)} DOMINA EL MUNDO!`;
-  $('endSub').textContent = `${S.st[w].wins} victorias · ${S.battle - 1} batallas`;
+  const v = S.st[w].wins; $('endSub').textContent = `${v} ${v === 1 ? 'victoria' : 'victorias'} · ${S.battle - 1} batallas`;
   Sfx.win(); show('game', 'end');
 }
 function togglePause() { if (!inGame) return; paused = !paused; $('paused').hidden = !paused; $('btnPause').textContent = paused ? '▶' : '❚❚'; }

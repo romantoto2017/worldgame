@@ -84,8 +84,21 @@ for (const k of keys) for (const b of countries[k].adj) if (!countries[b].adj.in
 for (const c of Object.values(countries)) { delete c.borders; delete c.cca3; }
 
 // banderas SVG (vectoriales: nítidas a cualquier resolución)
-const flagDir = path.join(path.dirname(require.resolve('flag-icons/package.json')), 'flags', '4x3');
-for (const c of Object.values(countries)) if (c.playable) fs.copyFileSync(path.join(flagDir, c.code + '.svg'), path.join(OUT, 'flags', c.code + '.svg'));
+// proporciones oficiales (svg-country-flags); flag-icons solo como respaldo (viene recortado a 4:3)
+const flagDir = path.join(path.dirname(require.resolve('svg-country-flags/package.json')), 'svg');
+const flagFallback = path.join(path.dirname(require.resolve('flag-icons/package.json')), 'flags', '4x3');
+for (const c of Object.values(countries)) if (c.playable) {
+  let f = path.join(flagDir, c.code + '.svg');
+  if (!fs.existsSync(f)) { console.warn('bandera de respaldo:', c.code); f = path.join(flagFallback, c.code + '.svg'); }
+  let svg = fs.readFileSync(f, 'utf8');
+  const vb = svg.match(/viewBox="\s*[-\d.]+[\s,]+[-\d.]+[\s,]+([\d.]+)[\s,]+([\d.]+)/);
+  if (!vb) throw new Error('sin viewBox: ' + c.code);
+  c.ar = +(vb[1] / vb[2]).toFixed(4);
+  // ancho/alto explícitos: sin ellos el navegador rasteriza a 300×150 y deforma la bandera
+  const h = 1000, w = Math.round(h * c.ar);
+  svg = svg.replace(/<svg\b([^>]*)>/, (m, attrs) => '<svg' + attrs.replace(/\s(width|height)="[^"]*"/g, '') + ` width="${w}" height="${h}" preserveAspectRatio="none">`);
+  fs.writeFileSync(path.join(OUT, 'flags', c.code + '.svg'), svg);
+}
 
 const playable = Object.values(countries).filter(c => c.playable).length;
 console.log('jugables:', playable, 'total:', Object.keys(countries).length);

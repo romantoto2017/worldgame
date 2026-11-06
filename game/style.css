@@ -67,16 +67,16 @@ input[type=range] { accent-color: var(--red); width: 160px; }
 .role { font-weight: 800; font-size: 11px; letter-spacing: .16em; height: 15px; }
 #sideA .role { color: var(--red); } #sideD .role { color: var(--blue); }
 .side.win .role { color: var(--green) !important; } .side.lose .role { color: #6b7587 !important; }
-.flagbox { position: relative; width: 92px; height: 66px; margin-top: 4px; }
-.flagbox img { width: 100%; height: 100%; object-fit: cover; border-radius: 8px; box-shadow: 0 6px 18px rgba(0,0,0,.45); display: block; transition: filter .5s, opacity .5s; }
-.flagbox .q { position: absolute; inset: 6px 14px; border-radius: 8px; background: var(--card2); display: grid; place-items: center;
+.flagbox { position: relative; height: 62px; min-width: 62px; margin-top: 4px; display: flex; justify-content: center; }
+.flagbox img { height: 100%; width: auto; max-width: 124px; object-fit: contain; border-radius: 8px; box-shadow: 0 6px 18px rgba(0,0,0,.45); display: block; transition: filter .5s, opacity .5s; }
+.flagbox .q { position: absolute; inset: 4px 0; width: 62px; left: 50%; transform: translateX(-50%); border-radius: 8px; background: var(--card2); display: grid; place-items: center;
   font-family: var(--head); font-size: 30px; color: #5d687a; }
 .flagbox img.spin { animation: flick .09s; }
 @keyframes flick { from { transform: scale(.92); opacity: .6; } }
 .flagbox img.land { animation: land .45s cubic-bezier(.2,1.6,.4,1); }
 @keyframes land { from { transform: scale(1.3); } }
 .side.lose img { filter: grayscale(1) brightness(.45); }
-.tag { position: absolute; top: -8px; right: -18px; font-family: var(--head); font-size: 11px; letter-spacing: .03em; padding: 2px 6px; border-radius: 5px;
+.tag { position: absolute; top: -8px; right: -22px; font-family: var(--head); font-size: 11px; letter-spacing: .03em; padding: 2px 6px; border-radius: 5px;
   transform: rotate(-4deg); animation: pop .4s cubic-bezier(.2,1.8,.4,1) both; white-space: nowrap; }
 .tag + .tag { top: 12px; }
 .tag.boss { background: var(--purple); } .tag.streak { background: var(--orange); } .tag.rally { background: var(--red); }
@@ -119,7 +119,7 @@ input[type=range] { accent-color: var(--red); width: 160px; }
 .cols h4 { font-size: 9px; letter-spacing: .14em; color: var(--yellow); margin-bottom: 4px; }
 .lb { display: grid; grid-template-columns: 12px 22px 1fr auto; gap: 6px; align-items: center; font-size: 12px; font-weight: 700; height: 25px;
   animation: row .35s both; }
-.lb .n { color: var(--muted); font-size: 10px; } .lb img { width: 22px; height: 15px; object-fit: cover; border-radius: 3px; }
+.lb .n { color: var(--muted); font-size: 10px; } .lb img { height: 14px; width: auto; max-width: 22px; justify-self: center; border-radius: 2px; }
 .lb .nm { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .lb .v { font-variant-numeric: tabular-nums; }
 @keyframes row { from { opacity: 0; transform: translateY(8px); } }
 
@@ -136,4 +136,4 @@ input[type=range] { accent-color: var(--red); width: 160px; }
 .pause-veil { position: absolute; inset: 0; display: grid; place-items: center; font-family: var(--head); font-size: 54px; letter-spacing: .1em;
   background: rgba(5,8,14,.45); }
 
-@media (max-height: 640px) { .panel { height: 236px; } .flagbox { width: 70px; height: 50px; } #callouts { bottom: 262px; } }
+@media (max-height: 640px) { .panel { height: 236px; } .flagbox { height: 48px; } .flagbox img { max-width: 96px; } #callouts { bottom: 262px; } }
