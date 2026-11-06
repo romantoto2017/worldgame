@@ -74,13 +74,27 @@ for (let i = 0; i < keys.length; i++) for (let j = i + 1; j < keys.length; j++) 
 for (const k of keys) {
   const c = countries[k], set = new Set((c.borders || []).map(x => cca3to[x]).filter(x => x && pts[x]));
   near[k].sort((x, y) => x[1] - y[1]);
-  // marítimo: < 150 km siempre; islas sin fronteras terrestres buscan hasta 400 km y al menos 2 rivales
-  const few = set.size === 0;
-  near[k].filter(([, d]) => d < (few ? 400 : 150)).forEach(([b]) => set.add(b));
-  if (few) for (const [b] of near[k]) { if (set.size >= 2) break; set.add(b); }
+  // solo frontera terrestre; los países isla (sin ninguna) usan los más cercanos por mar (< 400 km, mínimo 2)
+  if (set.size === 0) {
+    near[k].filter(([, d]) => d < 400).forEach(([b]) => set.add(b));
+    for (const [b] of near[k]) { if (set.size >= 2) break; set.add(b); }
+  }
   c.adj = [...set];
 }
-for (const k of keys) for (const b of countries[k].adj) if (!countries[b].adj.includes(k)) countries[b].adj.push(k); // simétrico
+const link = (a, b) => { if (!countries[a].adj.includes(b)) countries[a].adj.push(b); if (!countries[b].adj.includes(a)) countries[b].adj.push(a); };
+for (const k of keys) for (const b of countries[k].adj) link(k, b); // simétrico
+// sin esto la partida nunca termina (p. ej. América nunca toca Eurasia por tierra):
+// unir cada bloque aislado con el cruce marítimo más corto hacia otro bloque
+for (;;) {
+  const comp = {}; let n = 0;
+  for (const k of keys) if (comp[k] == null) { const st = [k]; comp[k] = n; while (st.length) for (const b of countries[st.pop()].adj) if (comp[b] == null) { comp[b] = n; st.push(b); } n++; }
+  if (n === 1) break;
+  let best = null;
+  for (const k of keys) if (comp[k] !== comp[keys[0]]) for (const [b, d] of near[k]) if (comp[b] !== comp[k] && (!best || d < best[2])) best = [k, b, d];
+  if (!best) throw new Error('bloque sin conexión posible');
+  console.log('cruce marítimo:', countries[best[0]].name, '↔', countries[best[1]].name, Math.round(best[2]) + ' km');
+  link(best[0], best[1]);
+}
 for (const c of Object.values(countries)) { delete c.borders; delete c.cca3; }
 
 // banderas SVG (vectoriales: nítidas a cualquier resolución)

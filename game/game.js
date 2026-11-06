@@ -104,14 +104,18 @@ const bbHit = (a, b) => a[0] <= b[2] && b[0] <= a[2] && a[1] <= b[3] && b[1] <= 
 const flagSrc = c => `flags/${c}.svg`;
 const flagImg = {}, flagLo = {}, flagHi = new Map();
 const ar = c => C[c].ar || 1.5;
+// banderas no rectangulares: se ven enteras (estiradas al país) sobre su color de fondo, sin huecos
+const FULL = { np: '#DC143C' };
 function raster(img, c, h) {
   const cv = document.createElement('canvas'); cv.height = h; cv.width = Math.round(h * ar(c));
-  cv.getContext('2d').drawImage(img, 0, 0, cv.width, h); return cv;
+  const x = cv.getContext('2d'); if (FULL[c]) { x.fillStyle = FULL[c]; x.fillRect(0, 0, cv.width, h); }
+  x.drawImage(img, 0, 0, cv.width, h); return cv;
 }
 // rectángulo donde dibujar la bandera: respeta la proporción (máx. 15 % de deformación), cubre todo el país
 // y se centra en su centro visual, no en el del rectángulo que lo contiene
 function flagRect(bb, center, c) {
   const w = bb[2] - bb[0], h = bb[3] - bb[1], r = ar(c);
+  if (FULL[c]) return [bb[0], bb[1], w, h];
   const a = Math.min(r * 1.15, Math.max(r / 1.15, w / h));
   let fw = w, fh = w / a; if (fh < h) { fh = h; fw = h * a; }
   const cl = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
