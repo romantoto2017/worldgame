@@ -26,6 +26,9 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .btn:hover { transform: translateY(-2px); background: #243142; }
 .btn.primary { background: var(--red); border-color: transparent; box-shadow: 0 8px 24px rgba(255,61,61,.3); }
 .btn.primary:hover { background: #ff5656; }
+a.btn { text-align: center; text-decoration: none; color: #fff; }
+.btn.conq-btn { background: #24456a; box-shadow: 0 8px 24px rgba(36,69,106,.35); }
+.btn.conq-btn:hover { background: #2d5683; }
 .btn.small { font-size: 15px; padding: 10px 14px; }
 .btn.danger { background: transparent; color: #ff7b7b; border-color: rgba(255,90,90,.35); }
 @keyframes rise { from { opacity: 0; transform: translateY(30px) scale(.9); } }

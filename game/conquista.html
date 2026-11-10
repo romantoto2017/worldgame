@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Empire · Conquista</title>
+<meta name="theme-color" content="#0d141e">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@500;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="conquista.css">
+</head>
+<body class="conq">
+<div id="app">
+  <canvas id="map"></canvas>
+
+  <!-- ELEGIR PAÍS -->
+  <section id="pick" class="screen">
+    <div class="pick-card card">
+      <div class="pick-head">
+        <a class="back" href="index.html" aria-label="Volver al menú">‹</a>
+        <div>
+          <h1>CONQUISTA MUNDIAL</h1>
+          <p>Elegí un país. La dificultad depende de su poder real.</p>
+        </div>
+      </div>
+      <input id="pickSearch" type="search" placeholder="Buscar país…" autocomplete="off" aria-label="Buscar país">
+      <div id="pickList" class="pick-list" role="listbox"></div>
+      <div id="pickInfo" class="pick-info"></div>
+      <div class="pick-actions">
+        <button id="btnLoad" class="btn" hidden>CONTINUAR PARTIDA</button>
+        <button id="btnStart" class="btn primary" disabled>EMPEZAR</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- JUEGO -->
+  <section id="hud" class="screen" hidden>
+    <header class="bar">
+      <button class="me" id="btnMe" aria-label="Mi país"><img id="meFlag" alt=""><span id="meName"></span></button>
+      <div class="stats">
+        <div class="stat" title="Tesoro"><small>TESORO</small><b id="sTreasury"></b></div>
+        <div class="stat" title="Fondo militar"><small>FONDO MIL.</small><b id="sFund"></b></div>
+        <div class="stat" title="PBI anual"><small>PBI</small><b id="sGdp"></b></div>
+        <div class="stat" title="Poder militar"><small>PODER</small><b id="sPower"></b></div>
+        <div class="stat hide-s" title="Tensión mundial"><small>TENSIÓN</small><b id="sTension"></b></div>
+      </div>
+      <div class="time">
+        <b id="sDate"></b>
+        <div class="speeds" role="group" aria-label="Velocidad">
+          <button data-sp="0" aria-label="Pausa">❚❚</button><button data-sp="1">1×</button><button data-sp="2">2×</button><button data-sp="4">4×</button><button data-sp="8">8×</button>
+        </div>
+      </div>
+      <button class="icon" id="btnMenu" aria-label="Menú">☰</button>
+    </header>
+    <div id="wars" class="wars"></div>
+    <div id="news" class="news"></div>
+    <aside id="sheet" class="sheet card" hidden>
+      <button class="close" id="sheetClose" aria-label="Cerrar">✕</button>
+      <div id="sheetBody"></div>
+    </aside>
+    <div id="toast" class="toast" hidden></div>
+  </section>
+
+  <!-- MODALES -->
+  <section id="modal" class="screen modal" hidden>
+    <div class="card cfg" id="modalBody"></div>
+  </section>
+</div>
+<script src="vendor/topojson-client.min.js"></script>
+<script src="data.js"></script>
+<script src="conquista-data.js"></script>
+<script src="conquista.js"></script>
+</body>
+</html>

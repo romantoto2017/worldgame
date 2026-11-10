@@ -523,7 +523,7 @@ async function battle() {
 let inGame = false;
 const screens = ['home', 'config', 'game', 'end'];
 const show = (...ids) => screens.forEach(s => ($(s).hidden = !ids.includes(s)));
-function refreshHome() { $('btnContinue').hidden = !load(SAVE_KEY); $('btnPlay').textContent = load(SAVE_KEY) ? 'NUEVA PARTIDA' : 'JUGAR'; }
+function refreshHome() { $('btnContinue').hidden = !load(SAVE_KEY); $('btnPlay').textContent = load(SAVE_KEY) ? 'RULETA: NUEVA PARTIDA' : 'RULETA MUNDIAL'; }
 function toHome() {
   abortRun(); inGame = false; paused = false; $('paused').hidden = true;
   callBox.innerHTML = ''; fxState = { marker: null, black: null, wipe: null }; focus.ids = []; focus.dim = 0;
