@@ -988,8 +988,8 @@ function openMe(t = 'res') {
       <div class="sec"><h3>🛒 EQUIPAMIENTO (con el tesoro · mejora la calidad)</h3><div class="ucards">${UK.map(k => {
         const U = UNITS[k], b1 = buy(me, k, 1, true), b10 = buy(me, k, 10, true);
         return `<div class="uc">${unitIcon(k)}<b>${fmtInt(n.eq[k])}</b><small>${U.n}<br>${U.desc}</small>
-          <div class="price">${U.lot > 1 ? `Lote de ${fmtInt(U.lot)}: ` : ''}${money(unitCost(k))}${b1.ok ? ` · llega ${dateOf(b1.arr)}` : ''}</div>
-          <div class="buy"><button data-b="${k}" data-l="1" ${b1.ok ? '' : 'disabled'}>COMPRAR ×1</button><button data-b="${k}" data-l="10" ${b10.ok ? '' : 'disabled'}>×10</button></div></div>`; }).join('')}</div></div>
+          <div class="price">${U.lot > 1 ? `Lote de ${fmtInt(U.lot)}: ` : ''}${money(unitCost(k))}${b1.ok ? ` · llega ${dateOf(b1.arr)}` : ` · <span style="color:var(--red)">${b1.msg}</span>`}</div>
+          <div class="buy"><button data-b="${k}" data-l="1">COMPRAR ×1</button><button data-b="${k}" data-l="10">×10</button></div></div>`; }).join('')}</div></div>
       ${q.length ? `<div class="sec"><h3>📦 EN CAMINO</h3><div class="units">${q.slice(0, 10).map(o => `<div><span>${UNITS[o.t].n}</span><b>${fmtInt(o.n)} · ${dateOf(o.day)}</b></div>`).join('')}</div></div>` : ''}`;
   }
   if (t === 'dip') {
