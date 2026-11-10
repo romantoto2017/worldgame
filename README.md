@@ -27,15 +27,15 @@ y entrar a http://localhost:8000/
 
 ## Modo Conquista mundial
 
-Estrategia en tiempo real con pausa (`game/conquista.html`). Elegís un país y construís un imperio desde el 1/1/2027.
+Estrategia en tiempo real con pausa, al estilo de los juegos de dominación (`game/conquista.html`). Elegís un país desde el 1/1/2027 y **ganás al controlar la mitad del PBI mundial**.
 
-- **Dificultad**: combina ejército, economía, calidad de vida, aliados y amenazas vecinas (no solo el tamaño del ejército).
-- **Economía**: PBI y población reales (Banco Mundial). Presupuesto en militar, infraestructura y calidad de vida; lo que no asignás va al tesoro.
-- **Ejército**: fuerzas armadas reales aproximadas de ~100 países; la tecnología depende de la riqueza del país. Las compras salen del fondo militar y las fábricas/cuarteles tienen un tope anual según el PBI y la población (el doble en guerra).
-- **Ejércitos en el mapa**: fichas que movés, dividís y mandás a atacar; las invasiones se ven con flechas animadas. La frontera sin ejército es por donde te invaden.
-- **Diplomacia**: relaciones 0–100 según fronteras, región, idioma, bloques y rivalidades reales; alianzas, defensa de aliados, paz.
-- **Ideologías**: democracia, socialismo, comunismo, autoritarismo, fascismo, monarquía, teocracia y anarquismo.
-- **Decisión del año**: una vez por año, un evento aleatorio con dos opciones.
-- **Celular**: sin zoom accidental por doble toque y el gesto de "atrás" abre el menú en lugar de salir.
+- **Mapa por puntos**: el mundo es una grilla de ~80.000 puntos de tierra. Las fronteras se mueven punto por punto.
+- **Escuadrones**: tus tropas (y las enemigas) son círculos con bandera y cantidad de soldados. Se seleccionan (tocando, con un recuadro con Shift o botón derecho, o TODOS) y se mandan tocando el mapa. En territorio enemigo anexan lo que pisan si no hay oposición; la guarnición local frena el avance. Si se cruzan dos escuadrones enemigos, combaten. Hay avance automático.
+- **Presupuesto en % del PBI**: social, investigación, militar (produce soldados solos, con tope de 1,5 % de la población, y mejora su efectividad) y liquidez (ahorro). Gastar más de 22 % del PBI frena el crecimiento.
+- **Investigación**: fusiles modernos, logística, fortificaciones, medicina, industria, blindados, aviación, misiles y bomba nuclear.
+- **Tesoro**: reclutar al instante, comprar equipamiento (tanques, aviones, etc., con tope de fábricas), diplomacia y reparar regiones dañadas.
+- **Coaliciones**: conquistar rápido hace que otros países te declaren la guerra juntos.
+- **Capital**: si cae y el país perdió más de la mitad de su territorio, se rinde; si no, el gobierno se muda.
+- **Diplomacia, ideologías, decisión del año y dificultad** como antes (dificultad = ejército × economía × calidad de vida, con aliados y amenazas).
 
 Datos: `tools/build-conquista.js` genera `game/conquista-data.js` a partir de `tools/raw/gdp.csv` y `tools/raw/pop.csv`.
