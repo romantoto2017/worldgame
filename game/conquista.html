@@ -2,7 +2,8 @@
 <html lang="es">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- sin zoom del navegador: el zoom del mapa lo maneja el juego -->
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>Empire · Conquista</title>
 <meta name="theme-color" content="#0d141e">
 <meta name="mobile-web-app-capable" content="yes">
@@ -25,7 +26,7 @@
         <a class="back" href="index.html" aria-label="Volver al menú">‹</a>
         <div>
           <h1>CONQUISTA MUNDIAL</h1>
-          <p>Elegí un país. La dificultad depende de su poder real.</p>
+          <p>Elegí un país. La dificultad mide ejército, economía, calidad de vida, aliados y enemigos.</p>
         </div>
       </div>
       <input id="pickSearch" type="search" placeholder="Buscar país…" autocomplete="off" aria-label="Buscar país">
@@ -43,11 +44,11 @@
     <header class="bar">
       <button class="me" id="btnMe" aria-label="Mi país"><img id="meFlag" alt=""><span id="meName"></span></button>
       <div class="stats">
-        <div class="stat" title="Tesoro"><small>TESORO</small><b id="sTreasury"></b></div>
-        <div class="stat" title="Fondo militar"><small>FONDO MIL.</small><b id="sFund"></b></div>
-        <div class="stat" title="PBI anual"><small>PBI</small><b id="sGdp"></b></div>
-        <div class="stat" title="Poder militar"><small>PODER</small><b id="sPower"></b></div>
-        <div class="stat hide-s" title="Tensión mundial"><small>TENSIÓN</small><b id="sTension"></b></div>
+        <div class="stat" title="Plata ahorrada del país"><small>💰 TESORO</small><b id="sTreasury"></b></div>
+        <div class="stat" title="Plata para comprar armamento"><small>🎖️ FONDO MILITAR</small><b id="sFund"></b></div>
+        <div class="stat" title="Producto bruto interno"><small>📈 PBI</small><b id="sGdp"></b></div>
+        <div class="stat" title="Poder militar total"><small>⚔️ PODER</small><b id="sPower"></b></div>
+        <div class="stat" title="Tensión mundial: cuanto más alta, más guerras"><small>🌡️ TENSIÓN</small><b id="sTension"></b></div>
       </div>
       <div class="time">
         <b id="sDate"></b>
@@ -55,10 +56,23 @@
           <button data-sp="0" aria-label="Pausa">❚❚</button><button data-sp="1">1×</button><button data-sp="2">2×</button><button data-sp="4">4×</button><button data-sp="8">8×</button>
         </div>
       </div>
+      <button class="icon" id="btnHelp" aria-label="Cómo jugar">?</button>
       <button class="icon" id="btnMenu" aria-label="Menú">☰</button>
     </header>
+    <div id="news" class="news" aria-live="polite"></div>
     <div id="wars" class="wars"></div>
-    <div id="news" class="news"></div>
+
+    <div id="armyBar" class="army-bar card" hidden></div>
+
+    <nav class="dock" aria-label="Acciones">
+      <button data-tab="res"><span>🏛️</span>PAÍS</button>
+      <button data-tab="army"><span>⚔️</span>EJÉRCITO</button>
+      <button data-tab="bud"><span>💰</span>PLATA</button>
+      <button data-tab="terr"><span>🏙️</span>CIUDADES</button>
+      <button data-tab="dip"><span>🤝</span>DIPLOMACIA</button>
+      <button data-tab="ideo"><span>📜</span>GOBIERNO</button>
+    </nav>
+
     <aside id="sheet" class="sheet card" hidden>
       <button class="close" id="sheetClose" aria-label="Cerrar">✕</button>
       <div id="sheetBody"></div>

@@ -27,12 +27,15 @@ y entrar a http://localhost:8000/
 
 ## Modo Conquista mundial
 
-Estrategia en tiempo real con pausa (`game/conquista.html`). Elegís un país (la dificultad depende de su poder real) y construís un imperio desde el 1/1/2027:
+Estrategia en tiempo real con pausa (`game/conquista.html`). Elegís un país y construís un imperio desde el 1/1/2027.
 
+- **Dificultad**: combina ejército, economía, calidad de vida, aliados y amenazas vecinas (no solo el tamaño del ejército).
 - **Economía**: PBI y población reales (Banco Mundial). Presupuesto en militar, infraestructura y calidad de vida; lo que no asignás va al tesoro.
-- **Ejército**: fuerzas armadas reales aproximadas de ~100 países (soldados, tanques, aviones, artillería, helicópteros, buques); el resto se estima por PBI y población. Compra de fusiles AK-47, RPG, tanques, artillería, lanzacohetes, aviones, helicópteros, drones, antiaéreos y buques, con días de entrega.
-- **Ideologías**: democracia, socialismo, comunismo, autoritarismo, fascismo, monarquía, teocracia y anarquismo, cada una con ventajas y desventajas.
-- **Diplomacia**: relaciones 0–100 según fronteras, región, idioma, bloques (OTAN, Mercosur, etc.) y rivalidades reales; alianzas, mejora de relaciones, paz.
-- **Guerra**: frentes que avanzan por porcentaje de ocupación; se necesita frontera o flota para invadir; los aliados acuden a defender; la capital caída hace capitular al país. Los territorios conquistados llegan dañados y se pueden reconstruir.
+- **Ejército**: fuerzas armadas reales aproximadas de ~100 países; la tecnología depende de la riqueza del país. Las compras salen del fondo militar y las fábricas/cuarteles tienen un tope anual según el PBI y la población (el doble en guerra).
+- **Ejércitos en el mapa**: fichas que movés, dividís y mandás a atacar; las invasiones se ven con flechas animadas. La frontera sin ejército es por donde te invaden.
+- **Diplomacia**: relaciones 0–100 según fronteras, región, idioma, bloques y rivalidades reales; alianzas, defensa de aliados, paz.
+- **Ideologías**: democracia, socialismo, comunismo, autoritarismo, fascismo, monarquía, teocracia y anarquismo.
+- **Decisión del año**: una vez por año, un evento aleatorio con dos opciones.
+- **Celular**: sin zoom accidental por doble toque y el gesto de "atrás" abre el menú en lugar de salir.
 
-Datos: `tools/build-conquista.js` genera `game/conquista-data.js` a partir de `tools/raw/gdp.csv` y `tools/raw/pop.csv` (datasets/gdp y datasets/population en GitHub).
+Datos: `tools/build-conquista.js` genera `game/conquista-data.js` a partir de `tools/raw/gdp.csv` y `tools/raw/pop.csv`.

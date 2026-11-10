@@ -10,8 +10,8 @@ const latest = file => { const m = {}; fs.readFileSync(path.join(__dirname, 'raw
   const p = l.match(/^(?:"[^"]*"|[^,]*),([A-Z0-9]{3}),(\d{4}),([\d.eE+-]+)/); if (!p) return;
   const [, iso, y, v] = p; if (!m[iso] || +y >= m[iso][0]) m[iso] = [+y, +v]; }); return m; };
 const GDP = latest('gdp.csv'), POP = latest('pop.csv');
-// PBI en miles de millones USD cuando el Banco Mundial no tiene dato o es muy viejo (estimaciones 2023)
-const GDP_FIX = { tw: 790, kp: 28, ve: 92, sy: 20, ye: 21, er: 2.3, cu: 107, lb: 18, af: 14, ss: 5, so: 11, mm: 64, xk: 10.4, ps: 17, va: 0.3, ir: 400 };
+// PBI en miles de millones USD cuando el Banco Mundial no tiene dato, es muy viejo o usa un tipo de cambio irreal (Cuba: tasa oficial 24 CUP/USD)
+const GDP_FIX = { tw: 790, kp: 28, ve: 92, sy: 20, ye: 21, er: 2.3, cu: 33, lb: 18, af: 14, ss: 5, so: 11, mm: 64, xk: 10.4, ps: 17, va: 0.3, ir: 400 };
 const POP_FIX = { tw: 23.4e6, xk: 1.6e6, va: 800 };
 
 // ejército activo aprox. (fuentes públicas tipo Global Firepower 2024; cifras redondeadas):
