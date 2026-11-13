@@ -133,15 +133,15 @@ const UNITS = {
 };
 const UK = Object.keys(UNITS);
 const TECH = [
-  { k: 'rif', n: 'Fusiles modernos', cost: 120, d: 'Tropas +10 % de fuerza', ic: '🔫' },
-  { k: 'log', n: 'Logística', cost: 180, d: 'Tropas 40 % más rápidas', ic: '🚚' },
-  { k: 'fort', n: 'Fortificaciones', cost: 240, d: '+30 % de defensa en tu territorio', ic: '🧱' },
-  { k: 'med', n: 'Medicina', cost: 220, d: 'Calidad de vida y población crecen más', ic: '🏥' },
-  { k: 'ind', n: 'Industria', cost: 320, d: 'PBI +1 % de crecimiento por año', ic: '🏭' },
-  { k: 'arm', n: 'Blindados', cost: 380, req: 'rif', d: 'Tropas +15 % de fuerza', ic: '🛡️' },
-  { k: 'avi', n: 'Aviación moderna', cost: 600, req: 'arm', d: 'Tropas +20 % de fuerza', ic: '✈️' },
-  { k: 'mis', n: 'Misiles', cost: 750, req: 'avi', d: 'Lanzá misiles contra escuadrones enemigos', ic: '🚀' },
-  { k: 'nuk', n: 'Bomba nuclear', cost: 1800, req: 'mis', d: 'Arrasa la capital enemiga (el mundo te va a odiar)', ic: '☢️' },
+  { k: 'rif', n: 'Fusiles modernos', cost: 200, d: 'Tropas +10 % de fuerza', ic: '🔫' },
+  { k: 'log', n: 'Logística', cost: 280, d: 'Tropas 40 % más rápidas', ic: '🚚' },
+  { k: 'fort', n: 'Fortificaciones', cost: 360, d: '+30 % de defensa en tu territorio', ic: '🧱' },
+  { k: 'med', n: 'Medicina', cost: 340, d: 'Calidad de vida y población crecen más', ic: '🏥' },
+  { k: 'ind', n: 'Industria', cost: 500, d: 'PBI +1 % por año y compras de a ×100', ic: '🏭' },
+  { k: 'arm', n: 'Blindados', cost: 600, req: 'rif', d: 'Tropas +15 % de fuerza', ic: '🛡️' },
+  { k: 'avi', n: 'Aviación moderna', cost: 950, req: 'arm', d: 'Tropas +20 % de fuerza', ic: '✈️' },
+  { k: 'mis', n: 'Misiles', cost: 1200, req: 'avi', d: 'Lanzá misiles contra escuadrones enemigos', ic: '🚀' },
+  { k: 'nuk', n: 'Bomba nuclear', cost: 2800, req: 'mis', d: 'Fabricás bombas de a una y las tirás donde quieras', ic: '☢️' },
 ];
 const IDEO = {
   dem: { n: 'Democracia', growth: .01, atk: 1, def: 1, rec: 1, qolm: 1.2, aggr: .35,
@@ -201,7 +201,7 @@ function resetCells() {
 }
 function newGame(me) {
   resetCells();
-  const g = { v: 3, me, day: 0, tension: 25, n: {}, reg: [], rel: {}, ally: {}, wars: [], q: [], log: [], sq: [], sqSeq: 0, ae: 0,
+  const g = { v: 3, me, day: 0, tension: 25, n: {}, reg: [], rel: {}, ally: {}, wars: [], q: [], log: [], sq: [], sqSeq: 0, ae: 0, aeN: {},
     nextEvent: 150 + Math.floor(Math.random() * 120), seen: [], wonShown: false };
   for (const k of PLAYABLE) {
     const pc = gdppc(k), lvl = clamp(15 + 25 * Math.log10(pc / 400), 8, 95), soldiers = Q[k].mil[0] * 1000;
@@ -211,7 +211,7 @@ function newGame(me) {
       // presupuesto en % del PBI, como sliders: social, investigación, militar, liquidez (ahorro)
       bud: { soc: clamp(8 + lvl / 10, 6, 18), res: clamp(pc / 30000, .3, 3), mil: clamp(Q[k].milPct, .5, 30), liq: 2 },
       eq: initialEquip(k), tech: clamp(.35 + .3 * Math.log10(pc / 1000) + .15 * Math.log10(spend / 1e4), .3, 1.5),
-      pm: clamp(Math.pow(pc / 20000, .8), .25, 3.5), techs: {}, rp: 0, line: 0, misDay: -99, relDay: {}, cap: CAPITAL[IDX[k]], soldiers };
+      pm: clamp(Math.pow(pc / 20000, .8), .25, 3.5), techs: {}, rp: 0, line: 0, misDay: -99, relDay: {}, cap: CAPITAL[IDX[k]], soldiers, base: soldiers, nukes: 0, nukeBuild: 0 };
     // escuadrones iniciales: la mitad en la capital, el resto repartido en la frontera más caliente
     const ci = IDX[k], capC = CAPITAL[ci];
     const parts = soldiers > 40000 ? [.5, .25, .25] : soldiers > 8000 ? [.6, .4] : [1];
@@ -238,14 +238,17 @@ const relBase0 = (a, b) => (SP[a + '-' + b] != null ? SP[a + '-' + b] : 50);
 let agg = null; // { cells, gdp, pop, qol } por dueño (índice)
 function updatePeaks() { for (const k of alive()) G.n[k].peak = Math.max(G.n[k].peak || 0, agg.cells[IDX[k]]); }
 function recomputeAgg() {
-  const cells = new Float64Array(NI), gdp = new Float64Array(NI), pop = new Float64Array(NI), qw = new Float64Array(NI);
+  const cells = new Float64Array(NI), gdp = new Float64Array(NI), pop = new Float64Array(NI), qw = new Float64Array(NI), core = new Float64Array(NI);
   for (const i of LAND) { const o = owner[i]; if (o === 255) continue; cells[o]++; const R = G.reg[cellC[i]];
-    gdp[o] += cellGdp[i] * (1 - dmg[i] * .8) * clamp((R.infra + 20) / 100, .2, 1); pop[o] += cellPop[i]; qw[o] += R.qol * cellPop[i]; }
-  agg = { cells, gdp, pop, qol: Array.from(qw, (v, i) => (pop[i] ? v / pop[i] : 0)) };
+    gdp[o] += cellGdp[i] * (1 - dmg[i] * .8) * clamp((R.infra + 20) / 100, .2, 1); pop[o] += cellPop[i]; qw[o] += R.qol * cellPop[i]; if (cellC[i] === o) core[o] += cellPop[i]; }
+  agg = { cells, gdp, pop, core, qol: Array.from(qw, (v, i) => (pop[i] ? v / pop[i] : 0)) };
 }
 const gdpOf = k => agg.gdp[IDX[k]];
 const popOf = k => agg.pop[IDX[k]];
 const avgQol = k => agg.qol[IDX[k]];
+// reclutas: la población propia cuenta entera; la conquistada, 25 % (no quiere pelear por vos)
+const manpower = k => { const i = IDX[k]; return agg.core[i] + (agg.pop[i] - agg.core[i]) * .25; };
+const foreignShare = k => { const i = IDX[k]; return agg.pop[i] ? 1 - agg.core[i] / agg.pop[i] : 0; };
 const worldGdp = () => agg.gdp.reduce((s, v) => s + v, 0);
 const revenue = k => gdpOf(k) * .1; // escala para eventos
 
@@ -260,7 +263,8 @@ function quality(k, defending) {
   if (defending) p += e.sam * UNITS.sam.pow;
   const milFx = clamp(.75 + n.bud.mil / 12, .75, 1.6); // el gasto militar mejora la efectividad, no la cantidad
   const tech = (has(k, 'rif') ? 1.1 : 1) * (has(k, 'arm') ? 1.15 : 1) * (has(k, 'avi') ? 1.2 : 1);
-  return p / s * n.tech * milFx * tech * (defending ? I.def * (has(k, 'fort') ? 1.3 : 1) : I.atk) * (.5 + n.stab / 200) * (n.aid || 1);
+  const mass = s > 2 * (n.base || s) ? (2 * n.base + (s - 2 * n.base) * .5) / s : 1; // más allá del doble del ejército original, conscriptos poco entrenados
+  return p / s * mass * n.tech * milFx * tech * (defending ? I.def * (has(k, 'fort') ? 1.3 : 1) : I.atk) * (.5 + n.stab / 200) * (n.aid || 1);
 }
 const power = (k, def) => G.n[k] ? G.n[k].soldiers * quality(k, def) : 0;
 function relBase(a, b) {
@@ -320,7 +324,7 @@ function flip(i, to, by) {
   owner[i] = to; dmg[i] = Math.min(1, dmg[i] + .3);
   const ci = cellC[i]; multi.add(ci); for (const key of [...maskCache.keys()]) if (key.startsWith(ci + '|')) maskCache.delete(key);
   agg.cells[from]--; agg.cells[to]++; dirty = true; G.terrDirty = true;
-  if (PLAYABLE[to] === G.me) G.ae += cellGdp[i] / Math.max(1, worldGdp()) * 100;
+  const sh = cellGdp[i] / Math.max(1, worldGdp()) * 100; if (PLAYABLE[to] === G.me) G.ae += sh; else G.aeN[PLAYABLE[to]] = (G.aeN[PLAYABLE[to]] || 0) + sh;
   const kf = PLAYABLE[from], nf = G.n[kf]; if (!nf) return;
   if (agg.cells[from] <= 0) return capitulate(kf, PLAYABLE[to]);
   if (i === nf.cap) {
@@ -438,8 +442,11 @@ function produce() { // producción pasiva de tropas desde el presupuesto milita
     const n = G.n[k], milB = gdpOf(k) * n.bud.mil / 100; // B$/año
     const upkeep = n.soldiers * 6e-5 * n.pm; // B$/año
     const free = Math.max(0, milB - upkeep), cost = 3e-5 * n.pm * ideoOf(k).rec; // B$ por soldado
-    const cap = popOf(k) * .015 * (warsOf(k).length ? 2 : 1);
-    if (n.soldiers < cap) n.reserve += Math.min(cap - n.soldiers, free / 365 / cost * .35);
+    const war = warsOf(k).length > 0, mp = manpower(k), cap = mp * (war ? .015 : .008);
+    // cuarteles: como mucho 0,06 % de los reclutas posibles por año en paz (0,15 % en guerra)
+    let add = Math.min(cap - n.soldiers, free / 365 / cost * .2, mp * (war ? .0015 : .0006) / 365);
+    if (k !== G.me && !war) add = Math.min(add, (n.base || n.soldiers) * 1.3 - n.soldiers); // la IA no se arma sin motivo
+    if (add > 0) n.reserve += add;
     if (milB < upkeep) { for (const s of sqOf(k)) s.n *= .9995; n.stab = Math.max(0, n.stab - .02); } // tropas sin paga desertan
   }
 }
@@ -483,11 +490,11 @@ function dayTick() {
   for (const k of alive()) {
     const n = G.n[k], gdp = gdpOf(k), b = n.bud, I = ideoOf(k), total = b.soc + b.res + b.mil + b.liq;
     n.treasury += gdp * b.liq / 100 / 365;
-    n.rp += Math.sqrt(Math.max(0, gdp * b.res / 100)) * .6 / 1; // puntos de investigación por día
+    n.rp += Math.sqrt(Math.max(0, gdp * b.res / 100)) * .3; // puntos de investigación por día
     // gasto social: calidad de vida y estabilidad
     const qGain = (b.soc - 7) * .004 * I.qolm * (has(k, 'med') ? 1.3 : 1);
     n.qolDrift = qGain;
-    n.stab += (40 + avgQol(k) * .5 + (I.stab || 0) - warsOf(k).length * 6 - n.stab) * .004;
+    n.stab += (40 + avgQol(k) * .5 + (I.stab || 0) - warsOf(k).length * 6 - foreignShare(k) * 35 - n.stab) * .004;
     // crecimiento: gastar mucho en todo lo frena (como un Estado que se endeuda)
     n.growth = .02 + I.growth + (has(k, 'ind') ? .01 : 0) - Math.max(0, total - 22) * .002 - (warsOf(k).length ? .015 : 0) - (gdppc(k) > 30000 ? .008 : 0);
   }
@@ -500,6 +507,7 @@ function dayTick() {
   }
   for (let i = G.q.length - 1; i >= 0; i--) { const o = G.q[i]; if (o.day <= G.day) { if (G.n[o.k]) G.n[o.k].eq[o.t] += o.n; G.q.splice(i, 1);
     if (o.k === G.me) pushNews(`📦 Llegaron ${fmtInt(o.n)} ${UNITS[o.t].n.toLowerCase()}`, 'good'); } }
+  for (const k of alive()) { const n = G.n[k]; if (n.nukeBuild && G.day >= n.nukeBuild) { n.nukes++; n.nukeBuild = 0; if (k === G.me) { pushNews('☢️ Una bomba nuclear está lista', 'good'); updateNukeBtn(); } } }
   produce();
   if (G.day % 15 === 0) alive().forEach(deploy);
   moveSquads(); combat(); annex(); syncSoldiers();
@@ -521,9 +529,17 @@ function monthTick() {
   }
   updatePeaks();
   for (const k of alive()) if (k !== G.me) ai(k);
-  coalition();
+  coalition(); aiCoalitions();
   G.ae *= .88;
   autosave();
+}
+function aiCoalitions() { // una potencia que conquista rápido asusta a sus vecinos
+  for (const k of Object.keys(G.aeN || {})) {
+    G.aeN[k] *= .88; if (!G.n[k] || G.aeN[k] < 1) continue;
+    let n = 0; for (const o of alive()) if (o !== k && o !== G.me && !atWar(o, k) && !allied(o, k) && rel(o, k) < 55 && canReach(o, k) && Math.random() < .3) { declareWar(o, k, 2); n++; }
+    alive().forEach(o => o !== k && addRel(o, k, -4));
+    if (n) { G.aeN[k] *= .5; news(`🤝 Coalición de ${n} países contra ${name(k)} por su expansión`, 'info', power(k) > 1e6); }
+  }
 }
 // expandirse rápido arma una coalición en tu contra
 function coalition() {
@@ -546,6 +562,8 @@ function ai(k) {
     if (ratio < .5 && G.day - w.day > 150 && Math.random() < .2) { if (other === G.me) askPeace(k); else makePeace(k, other); }
     else if (other !== G.me && G.day - w.day > 700 && Math.random() < .1) makePeace(k, other);
   }
+  if (n.techs.nuk && wars.length && !n.nukeBuild && n.nukes < 3 && n.treasury > nukeCost(k)) { n.treasury -= nukeCost(k); n.nukeBuild = G.day + 365; }
+  if (n.nukes) for (const w of wars) { const e = w.a === k ? w.b : w.a; if (G.n[e] && power(k, true) < power(e) * .7 && Math.random() < .3) { n.nukes--; const c = G.n[e].cap; detonate(k, cxOf(c), cyOf(c)); break; } }
   if (wars.length >= 2 || !I.aggr) return;
   const thr = 12 + G.tension * .35, myP = power(k);
   let best = null;
@@ -770,7 +788,7 @@ function render(now) {
   const f = dayFrac(), me = G.me, zoomed = cam.s > minS() * 3;
   ctx.save(); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   // explosiones nucleares
-  for (const b of (G.flashes || [])) { const k = (G.day + f - b.d) / 6; if (k > 1) continue; const [x, y] = toScreen(b.x, b.y); ctx.fillStyle = `rgba(255,${200 - 150 * k},80,${.8 * (1 - k)})`; ctx.beginPath(); ctx.arc(x, y, 10 + k * 26 * CS * cam.s, 0, 7); ctx.fill(); }
+  for (const b of (G.flashes || [])) { const k = (G.day + f - b.d) / 6; if (k > 1) continue; const [x, y] = toScreen(b.x, b.y); ctx.fillStyle = `rgba(255,${200 - 150 * k},80,${.8 * (1 - k)})`; ctx.beginPath(); ctx.arc(x, y, 10 + k * (b.r || 6 * CS) * 1.3 * cam.s, 0, 7); ctx.fill(); }
   for (const s of G.sq) {
     if (!G.n[s.o]) continue;
     const mine = s.o === me, enemy = G.n[me] && atWar(s.o, me);
@@ -825,7 +843,7 @@ function hud() {
       <span class="bar2" title="Fuerza total comparada"><i style="width:${pct}%"></i></span></button>`; }).join('') +
     (G.wars.length ? `<div class="war world">🌍 ${G.wars.length} guerra${G.wars.length > 1 ? 's' : ''} en el mundo</div>` : '');
   $('wars').querySelectorAll('[data-k]').forEach(b => (b.onclick = () => openCountry(b.dataset.k)));
-  renderArmyBar();
+  renderArmyBar(); updateNukeBtn();
 }
 const relLabel = r => (r >= 80 ? 'Excelente' : r >= 60 ? 'Buena' : r >= 40 ? 'Neutral' : r >= 20 ? 'Mala' : 'Hostil');
 const relColor = r => (r >= 60 ? 'var(--green)' : r >= 40 ? 'var(--yellow)' : r >= 20 ? 'var(--orange)' : 'var(--red)');
@@ -870,7 +888,7 @@ function renderCountry() {
   const r = rel(me, o), war = atWar(me, o), al = allied(me, o), myN = G.n[me];
   const cost = Math.max(.05, gdpOf(me) * .0005), cooldown = myN && myN.relDay[o] && G.day - myN.relDay[o] < 30;
   const allyWars = al ? enemiesOf(o).filter(e => e !== me && !atWar(me, e)) : [];
-  const ratio = myN ? power(me) / Math.max(1, power(o, true)) : 0, nukeOK = myN && war && has(me, 'nuk');
+  const ratio = myN ? power(me) / Math.max(1, power(o, true)) : 0, nukeOK = myN && war && myN.nukes > 0;
   openSheet(`<div class="sh-head"><img src="${flagSrc(o)}" alt=""><div><h2>${up(name(o))}</h2>
       <p>${ideoOf(o).n}${al ? ' <span class="chip2">ALIADO</span>' : ''}${war ? ' <span class="chip2 war">EN GUERRA</span>' : ''}</p></div></div>
     <div class="sec"><h3>🤝 RELACIÓN CON ${up(name(me))}</h3><div class="slider"><span style="color:#fff">${relLabel(r)}</span><span>${r} / 100</span>${bar(r)}</div></div>
@@ -887,7 +905,7 @@ function renderCountry() {
       ${!war && !al ? `<button class="btn blue" data-a="ally" ${r < 70 ? 'disabled' : ''}>📜 PROPONER ALIANZA${r < 70 ? ' (70+)' : ''}</button>` : ''}
       ${al ? `<button class="btn" data-a="unally">ROMPER ALIANZA</button>` : ''}
       ${allyWars.length ? `<button class="btn warbtn" data-a="help">🛡️ DEFENDERLO (${allyWars.map(name).join(', ')})</button>` : ''}
-      ${nukeOK ? `<button class="btn warbtn" data-a="nuke">☢️ BOMBA NUCLEAR (${money(Math.max(5, gdpOf(me) * .01))})</button>` : ''}
+      ${nukeOK ? `<button class="btn warbtn" data-a="nuke">☢️ BOMBA SOBRE SU CAPITAL (te quedan ${myN.nukes})</button>` : ''}
     </div>${!war && !canReach(me, o) ? '<div class="hint">No tenés frontera con este país: para invadirlo por mar necesitás buques de guerra.</div>' : ''}` : ''}`);
   $('sheetBody').querySelectorAll('[data-a]').forEach(b => (b.onclick = () => countryAction(b.dataset.a, o, cost)));
 }
@@ -905,17 +923,32 @@ function countryAction(a, o, cost) {
   }
   if (a === 'peace') { const ratio = power(me) / Math.max(1, power(o, true)); const w = G.wars.find(w => (w.a === me && w.b === o) || (w.b === me && w.a === o));
     if (ratio > 1.3 || (G.day - w.day > 365 && Math.random() < .4) || Math.random() < .1) makePeace(me, o); else toast(`${name(o)} rechazó la paz`); }
-  if (a === 'nuke') {
-    const c = Math.max(5, gdpOf(me) * .01); if (n.treasury < c) return toast('No alcanza el tesoro');
-    return confirmBox('☢️ ¿Lanzar la bomba nuclear?', `Arrasa la capital de ${name(o)}: destruye su población y economía alrededor. Todos los países te van a odiar y la tensión mundial se dispara.`, 'LANZAR', () => {
-      n.treasury -= c; const cap = G.n[o].cap, x = cxOf(cap), y = cyOf(cap);
-      for (const i of LAND) { const d = Math.hypot(cxOf(i) - x, cyOf(i) - y); if (d < 6 * CS) { dmg[i] = 1; cellPop[i] *= .3; cellGdp[i] *= .4; } }
-      G.n[o].stab = Math.max(0, G.n[o].stab - 30); relAll(-30); G.tension = clamp(G.tension + 25, 0, 100);
-      (G.flashes = G.flashes || []).push({ x, y, d: G.day }); recomputeAgg(); dirty = true;
-      news(`☢️ ${name(me)} lanzó una bomba nuclear sobre ${name(o)}`, '', true); renderCountry(); hud();
-    });
-  }
+  if (a === 'nuke') return confirmBox('☢️ ¿Tirar la bomba sobre la capital?', `Arrasa la capital de ${name(o)} y aniquila las tropas cercanas. Todos los países te van a odiar y se puede formar una coalición en tu contra.`, 'TIRARLA', () => {
+    n.nukes--; const cap = G.n[o].cap; detonate(me, cxOf(cap), cyOf(cap)); updateNukeBtn(); renderCountry(); hud(); });
   renderCountry(); hud(); dirty = true;
+}
+const nukeCost = k => Math.max(3, gdpOf(k) * .004);
+function nukeSection(me) {
+  const n = G.n[me]; if (!has(me, 'nuk')) return `<div class="sec"><h3>☢️ ARSENAL NUCLEAR</h3><div class="hint">Investigá BOMBA NUCLEAR en 🔬 INVESTIGAR para fabricarlas.</div></div>`;
+  return `<div class="sec"><h3>☢️ ARSENAL NUCLEAR · ${n.nukes} bomba${n.nukes === 1 ? '' : 's'} lista${n.nukes === 1 ? '' : 's'}</h3>
+    <div class="hint">Cada bomba arrasa un radio enorme: mata 85 % de las tropas enemigas, destruye ciudades y economía. El mundo te va a odiar.</div>
+    <div class="acts">${n.nukeBuild ? `<button class="btn" disabled>FABRICANDO · LISTA EL ${dateOf(n.nukeBuild)}</button>` : `<button class="btn warbtn" data-nukebuild>☢️ FABRICAR 1 BOMBA (${money(nukeCost(me))} · 120 días)</button>`}
+    ${n.nukes ? `<button class="btn warbtn" data-nukearm>🎯 TIRAR UNA AHORA</button>` : ''}</div></div>`;
+}
+let nukeMode = false;
+function armNuke() { if (!G.n[G.me].nukes) return toast('No tenés bombas listas'); nukeMode = true; selected.clear(); closeSheet(); renderArmyBar(); toast('☢️ Tocá en el mapa el territorio enemigo donde tirarla'); updateNukeBtn(); }
+function updateNukeBtn() { const b = $('btnNuke'); if (!b || !G || !G.n[G.me]) return; const k = G.n[G.me].nukes; b.hidden = !k; b.textContent = nukeMode ? '✕ CANCELAR' : `☢️ ${k}`; b.classList.toggle('on', nukeMode); }
+// explosión nuclear: radio grande, aniquila tropas, ciudades y economía
+function detonate(by, x, y) {
+  const R = 10 * CS, hit = new Set();
+  for (const i of LAND) { const d = Math.hypot(cxOf(i) - x, cyOf(i) - y); if (d < R) { const f = 1 - d / R * .5; dmg[i] = 1; cellPop[i] *= 1 - .8 * f; cellGdp[i] *= 1 - .7 * f; if (owner[i] !== 255) hit.add(PLAYABLE[owner[i]]); } }
+  for (const s of G.sq) if (s.o !== by && Math.hypot(s.x - x, s.y - y) < R * 1.2) s.n *= .15;
+  G.sq = G.sq.filter(s => s.n >= 1);
+  hit.delete(by); for (const k of hit) if (G.n[k]) G.n[k].stab = Math.max(0, G.n[k].stab - 35);
+  alive().forEach(o => o !== by && addRel(o, by, -20)); G.tension = clamp(G.tension + 15, 0, 100);
+  if (by === G.me) G.ae += 2; else G.aeN[by] = (G.aeN[by] || 0) + 2; // el mundo se une contra quien usa armas nucleares
+  (G.flashes = G.flashes || []).push({ x, y, d: G.day, r: R }); syncSoldiers(); recomputeAgg(); dirty = true;
+  news(`☢️ ${name(by)} lanzó una bomba nuclear sobre ${[...hit].map(name).join(', ') || 'el mar'}`, '', true);
 }
 const unitIcon = k => `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${ICON[k]}"/></svg>`;
 function advice(me) {
@@ -962,8 +995,8 @@ function openMe(t = 'res') {
     body = `<div class="hint">Cada barra es un porcentaje de tu PBI (${money(gdp)}). <b style="color:#fff">Si el total pasa el 22 %, la economía crece menos.</b></div>
       <div class="budbar" id="budbar"></div><div class="slider">Gasto total<span data-v="tot">${tot.toFixed(1)} % del PBI</span></div>
       ${sl('soc', '🏠 Gasto social', 30, 'Salud, educación y vivienda: calidad de vida, estabilidad y población.')}
-      ${sl('res', '🔬 Investigación', 8, `Genera puntos para desbloquear tecnologías (hoy ${(Math.sqrt(gdp * b.res / 100) * .6 * 30).toFixed(0)} puntos por mes).`)}
-      ${sl('mil', '⚔️ Militar', 30, 'Produce soldados nuevos solos (hasta 1,5 % de la población) y mejora su efectividad.')}
+      ${sl('res', '🔬 Investigación', 8, `Genera puntos para desbloquear tecnologías (hoy ${(Math.sqrt(gdp * b.res / 100) * .3 * 30).toFixed(0)} puntos por mes).`)}
+      ${sl('mil', '⚔️ Militar', 30, 'Produce soldados nuevos solos (hasta 0,8 % de la población en paz, 1,5 % en guerra) y mejora su efectividad.')}
       ${sl('liq', '💰 Liquidez (ahorro)', 10, 'Plata que entra al tesoro: con ella comprás armamento, reclutás al instante y hacés diplomacia.')}`;
   }
   if (t === 'tech') {
@@ -978,7 +1011,7 @@ function openMe(t = 'res') {
         <b>${I.n}${n.ideo === k ? ' · ACTUAL' : ''}</b><ul>${I.d.map(([c, x]) => `<li class="${c}">${x}</li>`).join('')}</ul></button>`).join('')}</div>`;
   }
   if (t === 'army') {
-    const q = G.q.filter(o => o.k === me).sort((a, b) => a.day - b.day), cap = popOf(me) * .015, rc = recruitCost(me, 10000);
+    const q = G.q.filter(o => o.k === me).sort((a, b) => a.day - b.day), cap = manpower(me) * (warsOf(me).length ? .015 : .008), rc = recruitCost(me, 10000);
     body = `<div class="sec"><h3>🗺️ ESCUADRONES (${sqOf(me).length})</h3><div class="list">${sqOf(me).sort((a, b) => b.n - a.n).map(s => { const o = owner[cellAt(s.x, s.y)];
         return `<button class="rel" data-sq="${s.id}"><span>${s.eng ? '💥' : s.auto ? '⚔️' : s.tx != null ? '🚶' : '🛡️'}</span><span>${fmtInt(s.n)} soldados</span><span class="hint">${s.eng ? 'combatiendo' : s.auto ? 'avance automático' : s.tx != null ? 'en marcha' : 'quieto'} · ${o !== 255 ? name(PLAYABLE[o]) : 'en el mar'}</span><span>›</span></button>`; }).join('')}</div>
       <div class="hint">Cada escuadrón es un círculo con tu bandera. Tocalo (o arrastrá un recuadro en computadora) y después tocá el mapa.</div></div>
@@ -989,7 +1022,9 @@ function openMe(t = 'res') {
         const U = UNITS[k], b1 = buy(me, k, 1, true), b10 = buy(me, k, 10, true);
         return `<div class="uc">${unitIcon(k)}<b>${fmtInt(n.eq[k])}</b><small>${U.n}<br>${U.desc}</small>
           <div class="price">${U.lot > 1 ? `Lote de ${fmtInt(U.lot)}: ` : ''}${money(unitCost(k))}${b1.ok ? ` · llega ${dateOf(b1.arr)}` : ` · <span style="color:var(--red)">${b1.msg}</span>`}</div>
-          <div class="buy"><button data-b="${k}" data-l="1">COMPRAR ×1</button><button data-b="${k}" data-l="10">×10</button></div></div>`; }).join('')}</div></div>
+          <div class="buy"><button data-b="${k}" data-l="1">COMPRAR ×1</button><button data-b="${k}" data-l="10">×10</button>${has(me, 'ind') ? `<button data-b="${k}" data-l="100">×100</button>` : ''}</div></div>`; }).join('')}</div>
+      ${has(me, 'ind') ? '' : '<div class="hint">🏭 Investigá INDUSTRIA para comprar de a ×100.</div>'}</div>
+      ${nukeSection(me)}
       ${q.length ? `<div class="sec"><h3>📦 EN CAMINO</h3><div class="units">${q.slice(0, 10).map(o => `<div><span>${UNITS[o.t].n}</span><b>${fmtInt(o.n)} · ${dateOf(o.day)}</b></div>`).join('')}</div></div>` : ''}`;
   }
   if (t === 'dip') {
@@ -1029,6 +1064,8 @@ function openMe(t = 'res') {
       n.ideo = k; n.ideoDay = G.day; n.stab = Math.max(0, n.stab - 25); news(`📜 ${name(me)} adoptó: ${IDEO[k].n}`, 'info', true); openMe('ideo'); });
   }));
   sb.querySelectorAll('[data-b]').forEach(b => (b.onclick = () => { const r = buy(me, b.dataset.b, +b.dataset.l); if (r.ok) { toast(`Pedido: ${UNITS[b.dataset.b].n} ×${b.dataset.l} · llega el ${dateOf(r.arr)}`); openMe('army'); hud(); } else toast(r.msg); }));
+  const nb = sb.querySelector('[data-nukebuild]'); if (nb) nb.onclick = () => { const c = nukeCost(me); if (n.treasury < c) return toast('No alcanza el tesoro'); n.treasury -= c; n.nukeBuild = G.day + 120; toast(`☢️ Bomba en fabricación: lista el ${dateOf(n.nukeBuild)}`); openMe('army'); hud(); };
+  const nl = sb.querySelector('[data-nukearm]'); if (nl) nl.onclick = () => { armNuke(); };
   const rb = sb.querySelector('[data-recruit]'); if (rb) rb.onclick = () => { const c = recruitCost(me, 10000); if (n.treasury < c) return; n.treasury -= c; n.reserve += 10000; deploy(me); syncSoldiers(); toast('10.000 soldados nuevos en la capital'); openMe('army'); hud(); };
   sb.querySelectorAll('[data-r]').forEach(b => (b.onclick = () => {
     const ci = +b.dataset.r, mine = Array.from(cellsOf[ci]).filter(i => owner[i] === IDX[me]), d = mine.reduce((s, i) => s + dmg[i], 0) / Math.max(1, mine.length);
@@ -1088,12 +1125,47 @@ function showHelp() {
     <div><span>🗺️</span>Un escuadrón en territorio enemigo <b>va pintando con tu bandera</b> lo que pisa, si no hay tropas enemigas cerca. Si se cruza con un escuadrón enemigo, pelean (destellos amarillos).</div>
     <div><span>🤖</span>AVANCE AUTOMÁTICO hace que el escuadrón avance solo contra el enemigo más cercano.</div>
     <div><span>💰</span>En PRESUPUESTO repartís tu PBI: social, investigación, militar (produce soldados solos) y liquidez (ahorro). Si gastás más del 22 % del PBI la economía crece menos.</div>
-    <div><span>🔬</span>Con los puntos de investigación desbloqueás mejoras, misiles y la bomba nuclear.</div>
+    <div><span>🔬</span>Con los puntos de investigación desbloqueás mejoras, compras de a ×100 (Industria), misiles y la bomba nuclear. Las bombas se fabrican de a una (EJÉRCITO) y se tiran con el botón ☢️.</div>
+    <div><span>📊</span>Arriba, el botón 📊 muestra el poder, PBI, población y más de todos los países.</div>
     <div><span>⚠️</span>Si conquistás muy rápido, los demás forman una <b>coalición</b> contra vos.</div>
     <div><span>🎲</span>Una vez por año vas a tener que tomar una decisión importante.</div></div>
     <div class="acts"><button class="btn primary" data-ok>ENTENDIDO</button></div>`, (el, close) => { el.querySelector('[data-ok]').onclick = () => { close(); setSpeed(was); }; });
 }
 $('btnHelp').onclick = showHelp;
+$('btnNuke').onclick = () => { if (nukeMode) { nukeMode = false; updateNukeBtn(); toast('Bomba guardada'); } else armNuke(); };
+/* estadísticas de todos los países */
+let statSort = 'pow', statFilter = 'all', statWas = 0;
+const STAT_COLS = [['rk', '#'], ['name', 'PAÍS'], ['pow', '⚔️ PODER'], ['sold', '🪖 SOLDADOS'], ['q', '⭐ CALIDAD'], ['gdp', '📈 PBI'], ['share', '🏆 % PBI MUNDIAL'],
+  ['pop', '👥 POBLACIÓN'], ['land', '🗺️ TERRITORIO'], ['qol', '🏠 VIDA'], ['stab', '🙂 ESTABILIDAD'], ['tech', '🔬 TECNOLOGÍAS'], ['rel', '🤝 RELACIÓN'], ['wars', '⚔️ GUERRAS'], ['nuk', '☢️']];
+function statRows() {
+  const me = G.me, wg = worldGdp(), nl = LAND.length;
+  return alive().map(k => { const n = G.n[k];
+    return { k, name: name(k), pow: power(k), sold: n.soldiers, q: quality(k), gdp: gdpOf(k), share: gdpOf(k) / wg * 100, pop: popOf(k), land: agg.cells[IDX[k]] / nl * 100,
+      qol: avgQol(k), stab: n.stab, tech: Object.keys(n.techs).length, rel: G.n[me] && k !== me ? rel(me, k) : -1, wars: enemiesOf(k).length, nuk: n.techs.nuk ? n.nukes : -1 }; });
+}
+function renderStats() {
+  const F = { all: 'Todos', top: 'Top 20', nb: 'Vecinos', war: 'En guerra conmigo', al: 'Aliados' }, me = G.me;
+  $('statsFilter').innerHTML = Object.entries(F).map(([k, l]) => `<button data-sf="${k}" class="${statFilter === k ? 'on' : ''}">${l}</button>`).join('');
+  $('statsFilter').querySelectorAll('[data-sf]').forEach(b => (b.onclick = () => { statFilter = b.dataset.sf; renderStats(); }));
+  let rows = statRows();
+  const rank = new Map(rows.slice().sort((a, b) => b.pow - a.pow).map((r, i) => [r.k, i + 1]));
+  if (statFilter === 'nb' && G.n[me]) rows = rows.filter(r => r.k === me || landNeighbors(me).has(r.k));
+  if (statFilter === 'war') rows = rows.filter(r => r.k === me || atWar(me, r.k));
+  if (statFilter === 'al') rows = rows.filter(r => r.k === me || allied(me, r.k));
+  rows.sort((a, b) => (statSort === 'name' ? a.name.localeCompare(b.name, 'es') : statSort === 'rk' ? rank.get(a.k) - rank.get(b.k) : b[statSort] - a[statSort]));
+  if (statFilter === 'top') rows = rows.slice(0, 20);
+  const pct = v => v.toFixed(v < 10 ? 1 : 0).replace('.', ',') + ' %';
+  $('statsTbl').innerHTML = `<thead><tr>${STAT_COLS.map(([k, l]) => `<th data-sk="${k}" class="${statSort === k ? 'on' : ''}">${l}</th>`).join('')}</tr></thead><tbody>${rows.map(r => `<tr class="srow ${r.k === me ? 'mine' : ''}" data-k="${r.k}">
+    <td class="rk">${rank.get(r.k)}</td><td><span class="c"><img src="${flagSrc(r.k)}" alt="">${r.name}</span></td><td>${fmtK(r.pow / 100)}</td><td>${fmtK(r.sold)}</td><td>×${r.q.toFixed(2)}</td>
+    <td>${money(r.gdp)}</td><td>${pct(r.share)}</td><td>${fmtK(r.pop)}</td><td>${pct(r.land)}</td><td>${Math.round(r.qol)}</td><td>${Math.round(r.stab)} %</td><td>${r.tech}/${TECH.length}</td>
+    <td class="${r.rel >= 60 ? 'pos' : r.rel >= 0 && r.rel < 30 ? 'neg' : ''}">${r.rel < 0 ? '—' : r.rel}</td><td class="${r.wars ? 'neg' : ''}">${r.wars || '—'}</td><td>${r.nuk < 0 ? '—' : r.nuk}</td></tr>`).join('')}</tbody>`;
+  $('statsTbl').querySelectorAll('[data-sk]').forEach(th => (th.onclick = () => { statSort = th.dataset.sk; renderStats(); }));
+  $('statsTbl').querySelectorAll('tr[data-k]').forEach(tr => (tr.onclick = () => { closeStats(); openCountry(tr.dataset.k); }));
+}
+function openStats() { if (!G) return; statWas = speed; setSpeed(0); $('stats').hidden = false; renderStats(); }
+function closeStats() { $('stats').hidden = true; setSpeed(statWas); }
+$('btnStats').onclick = openStats; $('statsClose').onclick = closeStats;
+$('stats').addEventListener('pointerdown', e => { if (e.target.id === 'stats') closeStats(); });
 let leaving = false;
 function openMenu() {
   if (modalOpen) return;
@@ -1180,6 +1252,13 @@ mapCv.addEventListener('pointermove', e => {
 });
 function tap(x, y) {
   if (!G) { const i = hitRegion(x, y); if (i >= 0) choose(PLAYABLE[cellC[i]]); return; }
+  if (nukeMode) {
+    const i = hitRegion(x, y), k = i >= 0 ? PLAYABLE[owner[i]] : null;
+    if (!k || !atWar(G.me, k)) return toast('Tiene que ser territorio de un país con el que estés en guerra');
+    const wx = cam.x + (x - vw / 2) / cam.s, wy = cam.y + (y - vh / 2) / cam.s;
+    return confirmBox(`☢️ ¿Tirar la bomba sobre ${name(k)}?`, 'Arrasa todo en un radio enorme y aniquila las tropas enemigas cercanas. Todos los países te van a odiar.', 'TIRARLA', () => {
+      G.n[G.me].nukes--; nukeMode = false; detonate(G.me, wx, wy); updateNukeBtn(); hud(); });
+  }
   const tok = tokens.slice().reverse().find(t => Math.hypot(x - t.x, y - t.y) <= t.r);
   if (tok && tok.s.o === G.me) { if (selected.has(tok.s.id)) selected.delete(tok.s.id); else selected.add(tok.s.id); closeSheet(); renderArmyBar(); return; }
   if (tok && atWar(tok.s.o, G.me) && has(G.me, 'mis') && !selected.size) return missileAt(tok.s);
@@ -1210,7 +1289,7 @@ document.addEventListener('dblclick', e => e.preventDefault(), { passive: false 
 ['gesturestart', 'gesturechange'].forEach(t => document.addEventListener(t, e => e.preventDefault(), { passive: false }));
 let lastTouch = 0;
 document.addEventListener('touchend', e => { const now = Date.now(); if (now - lastTouch < 350 && !e.target.closest('input')) e.preventDefault(); lastTouch = now; }, { passive: false });
-addEventListener('keydown', e => { if (G && e.code === 'Space' && !modalOpen && e.target.tagName !== 'INPUT') { e.preventDefault(); setSpeed(speed ? 0 : 1); } if (e.code === 'Escape') { selected.clear(); renderArmyBar(); } });
+addEventListener('keydown', e => { if (G && e.code === 'Space' && !modalOpen && e.target.tagName !== 'INPUT') { e.preventDefault(); setSpeed(speed ? 0 : 1); } if (e.code === 'Escape') { selected.clear(); nukeMode = false; renderArmyBar(); updateNukeBtn(); if (!$('stats').hidden) closeStats(); } });
 
 /* ======================= BUCLE ======================= */
 let last = performance.now(), hudT = 0;
@@ -1231,6 +1310,6 @@ function frame(now) {
 resize(); setupPick();
 loadFlags().then(() => (dirty = true));
 requestAnimationFrame(frame);
-window.__conq = { get G() { return G; }, set G(v) { G = v; }, power, quality, rel, dayTick, declareWar, gdpOf, worldGdp, newGame, strengthScore, buy, orderTo, randomEvent, EVENTS,
+window.__conq = { nukeAt: (wx, wy) => { const [x, y] = toScreen(wx, wy); nukeMode = true; tap(x, y); }, get G() { return G; }, set G(v) { G = v; }, power, quality, rel, dayTick, declareWar, gdpOf, worldGdp, newGame, strengthScore, buy, orderTo, randomEvent, EVENTS,
   start: k => { G = newGame(k); rebuildWarSet(); recomputeAgg(); updatePeaks(); rebuildMulti(); rebuildFrontiers(); syncSoldiers(); }, owner, cellsOf, IDX, LAND, selected, sqOf, autoTarget, flip, NC };
 })();

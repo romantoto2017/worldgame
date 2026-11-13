@@ -56,6 +56,7 @@
           <button data-sp="0" aria-label="Pausa">❚❚</button><button data-sp="1">1×</button><button data-sp="2">2×</button><button data-sp="4">4×</button><button data-sp="8">8×</button>
         </div>
       </div>
+      <button class="icon" id="btnStats" aria-label="Estadísticas de todos los países" title="Estadísticas">📊</button>
       <button class="icon" id="btnHelp" aria-label="Cómo jugar">?</button>
       <button class="icon" id="btnMenu" aria-label="Menú">☰</button>
     </header>
@@ -63,6 +64,7 @@
     <div id="wars" class="wars"></div>
 
     <div id="armyBar" class="army-bar card" hidden></div>
+    <button id="btnNuke" class="nuke-btn" hidden aria-label="Tirar bomba nuclear">☢️</button>
 
     <nav class="dock" aria-label="Acciones">
       <button data-tab="res"><span>🏛️</span>PAÍS</button>
@@ -78,6 +80,16 @@
       <div id="sheetBody"></div>
     </aside>
     <div id="toast" class="toast" hidden></div>
+  </section>
+
+  <!-- ESTADÍSTICAS -->
+  <section id="stats" class="screen modal" hidden>
+    <div class="card stats-card">
+      <div class="stats-head"><h2>📊 ESTADÍSTICAS MUNDIALES</h2><button class="icon" id="statsClose" aria-label="Cerrar">✕</button></div>
+      <div class="filters" id="statsFilter"></div>
+      <div class="tbl-wrap"><table id="statsTbl"></table></div>
+      <div class="hint">Tocá un encabezado para ordenar · tocá un país para abrir su panel. El juego queda en pausa mientras mirás.</div>
+    </div>
   </section>
 
   <!-- MODALES -->

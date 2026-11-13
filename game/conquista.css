@@ -187,3 +187,32 @@ html:has(body.conq), body.conq { overscroll-behavior: none; touch-action: none; 
 }
 @media (max-width: 420px) { .me span { display: none; } .me { padding: 5px 6px; } .speeds button { padding: 6px 5px; font-size: 11px; } }
 @media (prefers-reduced-motion: reduce) { .news div { animation: none; } }
+
+/* bomba nuclear lista */
+.nuke-btn { position: absolute; right: max(12px, env(safe-area-inset-right)); bottom: calc(max(10px, env(safe-area-inset-bottom)) + var(--dock-h) + 12px); z-index: 5;
+  border: 2px solid #ffd36a; background: radial-gradient(circle, #8a1a1a, #4a0c0c); color: #fff; border-radius: 16px; padding: 10px 14px; font: 800 15px Inter, sans-serif;
+  box-shadow: 0 0 0 0 rgba(255,80,40,.6); animation: nukePulse 1.6s infinite; }
+.nuke-btn.on { background: #ffd36a; color: #111; animation: none; }
+@keyframes nukePulse { 70% { box-shadow: 0 0 0 14px rgba(255,80,40,0); } }
+
+/* estadísticas */
+.stats-card { width: min(1120px, calc(100vw - 24px)); max-height: calc(100% - 24px); display: flex; flex-direction: column; gap: 10px; padding: 16px; }
+.stats-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.stats-head h2 { font-family: var(--head); font-weight: 400; font-size: 24px; letter-spacing: .03em; }
+.tbl-wrap { overflow: auto; min-height: 0; flex: 1 1 auto; border-radius: 10px; border: 1px solid var(--line); touch-action: pan-x pan-y; overscroll-behavior: contain; }
+#statsTbl { border-collapse: collapse; width: 100%; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+#statsTbl th { position: sticky; top: 0; background: var(--card2); text-align: right; padding: 8px 10px; font-size: 10px; letter-spacing: .08em; color: var(--muted); white-space: nowrap; cursor: pointer; user-select: none; }
+#statsTbl th.on { color: var(--yellow); }
+#statsTbl th:first-child, #statsTbl th:nth-child(2), #statsTbl td:first-child, #statsTbl td:nth-child(2) { text-align: left; }
+#statsTbl td { padding: 7px 10px; border-top: 1px solid var(--line); text-align: right; white-space: nowrap; font-weight: 600; }
+#statsTbl tr.srow { cursor: pointer; } #statsTbl tr.srow:hover td { background: rgba(255,255,255,.04); }
+#statsTbl tr.mine td { background: rgba(255,200,58,.1); }
+#statsTbl td .c { display: flex; align-items: center; gap: 8px; font-weight: 800; }
+#statsTbl td img { height: 14px; width: auto; max-width: 22px; border-radius: 2px; }
+#statsTbl .rk { color: var(--muted); font-size: 11px; }
+#statsTbl .neg { color: #ff8a8a; } #statsTbl .pos { color: #8ff0b3; }
+@media (max-width: 760px) { .stats-card { padding: 12px; } .stats-head h2 { font-size: 19px; } #statsTbl { font-size: 12px; } }
+#statsTbl td:nth-child(2), #statsTbl th:nth-child(2) { position: sticky; left: 0; z-index: 1; background: var(--card); }
+#statsTbl th:nth-child(2) { z-index: 3; background: var(--card2); }
+#statsTbl th { z-index: 2; }
+#statsTbl tr.mine td:nth-child(2) { background: #2b2a24; }
