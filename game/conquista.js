@@ -316,13 +316,53 @@ const sqOf = k => G.sq.filter(s => s.o === k);
 function syncSoldiers() { for (const k of alive()) G.n[k].soldiers = G.n[k].reserve; for (const s of G.sq) if (G.n[s.o]) G.n[s.o].soldiers += s.n; }
 
 /* ======================= TERRITORIO ======================= */
-const maskCache = new Map(); // `${región}|${dueño}` -> {cv, bb}
-let multi = new Set(); // regiones con más de un dueño
-function rebuildMulti() { multi = new Set(); for (let ci = 0; ci < NI; ci++) { const cells = cellsOf[ci], o0 = owner[cells[0]]; for (const i of cells) if (owner[i] !== o0) { multi.add(ci); break; } } }
+// los países intactos se dibujan con su contorno real; los que ganaron o perdieron tierra, como una sola
+// mancha por masa de tierra contigua con su bandera estirada encima (las fronteras internas desaparecen, como en la ruleta)
+const dirtyOwners = new Set(), pristine = new Uint8Array(NI), compsOf = new Map(), seen = new Uint32Array(NC); let stamp = 0, borderPath = null;
+function rebuildMulti() { for (let o = 0; o < NI; o++) dirtyOwners.add(o); borderPath = null; }
+function makeComp(cells) {
+  let gx0 = 1e9, gy0 = 1e9, gx1 = -1, gy1 = -1, sx = 0, sy = 0;
+  for (const i of cells) { const x = i % NX, y = (i / NX) | 0; if (x < gx0) gx0 = x; if (x > gx1) gx1 = x; if (y < gy0) gy0 = y; if (y > gy1) gy1 = y; sx += x; sy += y; }
+  const gw = gx1 - gx0 + 1, gh = gy1 - gy0 + 1, cv = document.createElement('canvas'); cv.width = gw; cv.height = gh;
+  const c = cv.getContext('2d'), im = c.createImageData(gw, gh);
+  for (const i of cells) im.data[((((i / NX) | 0) - gy0) * gw + (i % NX) - gx0) * 4 + 3] = 255;
+  c.putImageData(im, 0, 0);
+  return { cv, n: cells.length, bb: [gx0 * CS, gy0 * CS, (gx1 + 1) * CS, (gy1 + 1) * CS], c: [(sx / cells.length + .5) * CS, (sy / cells.length + .5) * CS] };
+}
+function components(o, cells) { // masas de tierra contiguas de un dueño
+  stamp++; const out = [];
+  for (const s0 of cells) {
+    if (seen[s0] === stamp) continue; const comp = [s0]; seen[s0] = stamp;
+    for (let h = 0; h < comp.length; h++) { const i = comp[h], x = i % NX;
+      for (const j of [x > 0 ? i - 1 : -1, x < NX - 1 ? i + 1 : -1, i - NX, i + NX]) if (j >= 0 && j < NC && owner[j] === o && seen[j] !== stamp) { seen[j] = stamp; comp.push(j); } }
+    out.push(makeComp(comp));
+  }
+  return out.sort((a, b) => b.n - a.n);
+}
+function ensureTerritory() {
+  if (dirtyOwners.size) {
+    const list = new Map(); for (const o of dirtyOwners) list.set(o, []);
+    for (const i of LAND) { const l = list.get(owner[i]); if (l) l.push(i); }
+    for (const [o, cells] of list) {
+      const own = cellsOf[o]; pristine[o] = cells.length === own.length && own.every(i => owner[i] === o) ? 1 : 0;
+      compsOf.set(o, pristine[o] || !cells.length ? [] : components(o, cells));
+    }
+    dirtyOwners.clear(); borderPath = null;
+  }
+  if (!borderPath) { // escalones de puntos entre dueños que cambiaron (entre países intactos dibuja su contorno real)
+    borderPath = new Path2D();
+    for (const i of LAND) { const o = owner[i]; if (pristine[o]) continue; const x = i % NX, y = (i / NX) | 0;
+      const r = x < NX - 1 ? owner[i + 1] : 255, d = i + NX < NC ? owner[i + NX] : 255, l = x > 0 ? owner[i - 1] : 255, u = i - NX >= 0 ? owner[i - NX] : 255;
+      if (r !== 255 && r !== o && (!pristine[r] || r > o)) { borderPath.moveTo((x + 1) * CS, y * CS); borderPath.lineTo((x + 1) * CS, (y + 1) * CS); }
+      if (d !== 255 && d !== o && (!pristine[d] || d > o)) { borderPath.moveTo(x * CS, (y + 1) * CS); borderPath.lineTo((x + 1) * CS, (y + 1) * CS); }
+      if (l !== 255 && l !== o && pristine[l]) { borderPath.moveTo(x * CS, y * CS); borderPath.lineTo(x * CS, (y + 1) * CS); }
+      if (u !== 255 && u !== o && pristine[u]) { borderPath.moveTo(x * CS, y * CS); borderPath.lineTo((x + 1) * CS, y * CS); } }
+  }
+}
 function flip(i, to, by) {
   const from = owner[i]; if (from === to) return;
   owner[i] = to; dmg[i] = Math.min(1, dmg[i] + .3);
-  const ci = cellC[i]; multi.add(ci); for (const key of [...maskCache.keys()]) if (key.startsWith(ci + '|')) maskCache.delete(key);
+  dirtyOwners.add(from); dirtyOwners.add(to); borderPath = null;
   agg.cells[from]--; agg.cells[to]++; dirty = true; G.terrDirty = true;
   const sh = cellGdp[i] / Math.max(1, worldGdp()) * 100; if (PLAYABLE[to] === G.me) G.ae += sh; else G.aeN[PLAYABLE[to]] = (G.aeN[PLAYABLE[to]] || 0) + sh;
   const kf = PLAYABLE[from], nf = G.n[kf]; if (!nf) return;
@@ -339,7 +379,7 @@ function capitulate(k, by) {
   if (!G.n[k] || !G.n[by]) return;
   const ki = IDX[k], bi = IDX[by];
   for (const i of LAND) if (owner[i] === ki) { owner[i] = bi; dmg[i] = Math.min(1, dmg[i] + .15); }
-  maskCache.clear(); rebuildMulti();
+  rebuildMulti();
   const e = G.n[k].eq, w = G.n[by].eq; for (const t of ['tank', 'art', 'mlrs', 'heli', 'rifle']) w[t] += Math.round(e[t] * .25);
   G.n[by].treasury += Math.max(0, G.n[k].treasury) * .5;
   delete G.n[k]; G.sq = G.sq.filter(s => s.o !== k); G.wars = G.wars.filter(x => x.a !== k && x.b !== k); rebuildWarSet();
@@ -703,7 +743,7 @@ const minS = () => Math.min(vw / W, vh / H) * 0.95;
 function clampCam() { cam.s = clamp(cam.s, minS(), minS() * 80); cam.x = clamp(cam.x, 0, W); cam.y = clamp(cam.y, 0, H); dirty = true; }
 function resize() {
   dpr = Math.min(2, window.devicePixelRatio || 1); vw = innerWidth; vh = innerHeight;
-  for (const c of [mapCv, baseCv]) { c.width = Math.round(vw * dpr); c.height = Math.round(vh * dpr); }
+  for (const c of [mapCv, baseCv, layerCv]) { c.width = Math.round(vw * dpr); c.height = Math.round(vh * dpr); }
   if (!cam.init) { cam.s = Math.min(vw / W, vh / H) * 1.1; cam.init = true; }
   clampCam();
 }
@@ -718,65 +758,57 @@ function flyTo(bb, pad = 1.6) {
 }
 const toScreen = (x, y) => [(x - cam.x) * cam.s + vw / 2, (y - cam.y) * cam.s + vh / 2];
 const setT = c => { const k = cam.s * dpr; c.setTransform(k, 0, 0, k, (vw / 2 - cam.x * cam.s) * dpr, (vh / 2 - cam.y * cam.s) * dpr); };
-// máscara de los puntos de una región que pertenecen a un dueño
-function maskOf(ci, o) {
-  const key = ci + '|' + o; if (maskCache.has(key)) return maskCache.get(key);
-  const b = RBB[ci], gx0 = Math.max(0, Math.floor(b[0] / CS)), gy0 = Math.max(0, Math.floor(b[1] / CS)), gx1 = Math.min(NX - 1, Math.ceil(b[2] / CS)), gy1 = Math.min(NY - 1, Math.ceil(b[3] / CS));
-  const gw = gx1 - gx0 + 1, gh = gy1 - gy0 + 1, cv = document.createElement('canvas'); cv.width = gw; cv.height = gh;
-  const c = cv.getContext('2d'), im = c.createImageData(gw, gh); let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
-  for (const i of cellsOf[ci]) if (owner[i] === o) { const x = i % NX - gx0, y = Math.floor(i / NX) - gy0; im.data[(y * gw + x) * 4 + 3] = 255;
-    if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
-  c.putImageData(im, 0, 0);
-  const m = { cv, wb: [gx0 * CS, gy0 * CS, (gx1 + 1) * CS, (gy1 + 1) * CS], ob: [(gx0 + x0) * CS, (gy0 + y0) * CS, (gx0 + x1 + 1) * CS, (gy0 + y1 + 1) * CS] };
-  maskCache.set(key, m); return m;
-}
+const LANDPATH = new Path2D(); RPATH.forEach(p => LANDPATH.addPath(p));
+const layerCv = document.createElement('canvas'), lctx = layerCv.getContext('2d');
 function drawFlagIn(c, k, bb, center) { const sw = (bb[2] - bb[0]) * cam.s, img = sw > 260 ? midFlag(k) : flagLo[k]; if (img) c.drawImage(img, ...flagRect(bb, center, k)); }
+function drawComp(target, comp, k, tint) { // máscara de puntos × bandera, compuesta en pantalla
+  const [sx0, sy0] = toScreen(comp.bb[0] - CS, comp.bb[1] - CS), [sx1, sy1] = toScreen(comp.bb[2] + CS, comp.bb[3] + CS);
+  const rx = Math.max(0, Math.floor(sx0)), ry = Math.max(0, Math.floor(sy0)), rw = Math.min(vw, Math.ceil(sx1)) - rx, rh = Math.min(vh, Math.ceil(sy1)) - ry;
+  if (rw <= 0 || rh <= 0) return;
+  tmpCv.width = Math.ceil(rw * dpr); tmpCv.height = Math.ceil(rh * dpr);
+  tctx.setTransform(dpr, 0, 0, dpr, -rx * dpr, -ry * dpr); tctx.imageSmoothingEnabled = true;
+  const [mx0, my0] = toScreen(comp.bb[0], comp.bb[1]), [mx1, my1] = toScreen(comp.bb[2], comp.bb[3]);
+  tctx.drawImage(comp.cv, mx0, my0, mx1 - mx0, my1 - my0);
+  tctx.globalCompositeOperation = 'source-in';
+  if (tint) { tctx.fillStyle = tint; tctx.fillRect(rx, ry, rw, rh); }
+  else { const [cx, cy] = toScreen(comp.c[0], comp.c[1]), img = (mx1 - mx0) > 260 ? midFlag(k) : flagLo[k]; if (img) tctx.drawImage(img, ...flagRect([mx0, my0, mx1, my1], [cx, cy], k)); }
+  tctx.globalCompositeOperation = 'source-over';
+  target.drawImage(tmpCv, rx * dpr, ry * dpr);
+}
 function renderBase() {
   const c = bctx;
   c.setTransform(1, 0, 0, 1, 0, 0); c.fillStyle = '#101a27'; c.fillRect(0, 0, baseCv.width, baseCv.height);
   setT(c);
   const x0 = cam.x - vw / 2 / cam.s, x1 = cam.x + vw / 2 / cam.s, y0 = cam.y - vh / 2 / cam.s, y1 = cam.y + vh / 2 / cam.s;
+  const off = b => b[2] < x0 || b[0] > x1 || b[3] < y0 || b[1] > y1;
   c.strokeStyle = 'rgba(255,255,255,.035)'; c.lineWidth = 1 / cam.s; c.beginPath();
   const step = W / 40;
   for (let x = Math.floor(x0 / step) * step; x < x1; x += step) { c.moveTo(x, y0); c.lineTo(x, y1); }
   for (let y = Math.floor(y0 / step) * step; y < y1; y += step) { c.moveTo(x0, y); c.lineTo(x1, y); }
   c.stroke();
   c.fillStyle = '#3a4352'; c.fill(grayPath);
+  if (G) ensureTerritory();
+  // países intactos: bandera recortada por su contorno real
   for (let ci = 0; ci < NI; ci++) {
-    const b = RBB[ci]; if (b[2] < x0 || b[0] > x1 || b[3] < y0 || b[1] > y1) continue;
-    if (!G || !multi.has(ci)) { // región de un solo dueño: bandera recortada por el contorno
-      const k = G ? PLAYABLE[owner[cellsOf[ci][0]]] : PLAYABLE[ci]; if (!k) continue;
-      for (const p of RP[ci]) { if ((p.bb[2] - p.bb[0]) * cam.s < .6 && (p.bb[3] - p.bb[1]) * cam.s < .6) continue;
-        c.save(); c.clip(p.path); drawFlagIn(c, k, k === PLAYABLE[ci] ? p.bb : b, k === PLAYABLE[ci] ? p.c : bbCenter(b)); c.restore(); }
-      continue;
-    }
-    // región disputada: cada dueño pinta sus puntos con su bandera (frontera que se mueve)
-    const [sx0, sy0] = toScreen(b[0], b[1]), [sx1, sy1] = toScreen(b[2], b[3]);
-    const rx = Math.max(0, Math.floor(sx0)), ry = Math.max(0, Math.floor(sy0)), rw = Math.min(vw, Math.ceil(sx1)) - rx, rh = Math.min(vh, Math.ceil(sy1)) - ry;
-    if (rw <= 0 || rh <= 0) continue;
-    const owners = new Set(); for (const i of cellsOf[ci]) owners.add(owner[i]);
-    c.save(); c.clip(RPATH[ci]); c.setTransform(1, 0, 0, 1, 0, 0);
-    for (const o of owners) {
-      if (o === 255) continue; const k = PLAYABLE[o], m = maskOf(ci, o);
-      tmpCv.width = Math.ceil(rw * dpr); tmpCv.height = Math.ceil(rh * dpr);
-      tctx.setTransform(dpr, 0, 0, dpr, -rx * dpr, -ry * dpr); tctx.imageSmoothingEnabled = true;
-      const [mx0, my0] = toScreen(m.wb[0], m.wb[1]), [mx1, my1] = toScreen(m.wb[2], m.wb[3]);
-      tctx.drawImage(m.cv, mx0, my0, mx1 - mx0, my1 - my0);
-      tctx.globalCompositeOperation = 'source-in';
-      const fb = k === PLAYABLE[ci] ? b : m.ob, [fx0, fy0] = toScreen(fb[0], fb[1]), [fx1, fy1] = toScreen(fb[2], fb[3]);
-      const img = (fx1 - fx0) > 260 ? midFlag(k) : flagLo[k]; if (img) tctx.drawImage(img, ...flagRect([fx0, fy0, fx1, fy1], [(fx0 + fx1) / 2, (fy0 + fy1) / 2], k));
-      tctx.globalCompositeOperation = 'source-over';
-      c.drawImage(tmpCv, rx * dpr, ry * dpr);
-    }
-    c.restore();
+    if ((G && !pristine[ci]) || off(RBB[ci])) continue; const k = PLAYABLE[ci];
+    for (const p of RP[ci]) { if ((p.bb[2] - p.bb[0]) * cam.s < .6 && (p.bb[3] - p.bb[1]) * cam.s < .6) continue;
+      c.save(); c.clip(p.path); drawFlagIn(c, k, p.bb, p.c); c.restore(); }
   }
-  setT(c);
-  c.strokeStyle = 'rgba(8,12,20,.55)'; c.lineWidth = .8 / cam.s; for (let ci = 0; ci < NI; ci++) c.stroke(RPATH[ci]);
+  if (G) {
+    // países que cambiaron: una bandera por masa de tierra, sin fronteras internas
+    lctx.setTransform(1, 0, 0, 1, 0, 0); lctx.clearRect(0, 0, layerCv.width, layerCv.height);
+    for (const k of alive()) { const o = IDX[k]; if (pristine[o]) continue; for (const comp of compsOf.get(o) || []) if (!off(comp.bb)) drawComp(lctx, comp, k); }
+    if (sel && G.n[sel] && !pristine[IDX[sel]]) for (const comp of compsOf.get(IDX[sel]) || []) if (!off(comp.bb)) drawComp(lctx, comp, sel, 'rgba(255,255,255,.22)');
+    c.save(); c.clip(LANDPATH); c.setTransform(1, 0, 0, 1, 0, 0); c.drawImage(layerCv, 0, 0); c.restore(); setT(c);
+  }
+  c.strokeStyle = 'rgba(8,12,20,.55)'; c.lineWidth = .8 / cam.s;
+  for (let ci = 0; ci < NI; ci++) if ((!G || pristine[ci]) && !off(RBB[ci])) c.stroke(RPATH[ci]);
+  if (G && borderPath) { c.strokeStyle = 'rgba(8,12,20,.5)'; c.lineWidth = .9 / cam.s; c.stroke(borderPath); }
   if (G && G.n[G.me]) { // mi territorio: borde dorado (puntos de frontera)
     c.fillStyle = 'rgba(255,200,58,.55)';
     const F = FRONT && FRONT[IDX[G.me]]; if (F && F.length < 6000) for (const i of F) { if (owner[i - 1] !== owner[i] && owner[i - 1] !== 255 || owner[i + 1] !== owner[i] && owner[i + 1] !== 255 || owner[i - NX] !== owner[i] && owner[i - NX] !== 255 || owner[i + NX] !== owner[i] && owner[i + NX] !== 255) c.fillRect(cxOf(i) - CS / 2, cyOf(i) - CS / 2, CS, CS * .25); }
   }
-  if (sel && G && G.n[sel]) { c.strokeStyle = '#fff'; c.lineWidth = 2.4 / cam.s; for (let ci = 0; ci < NI; ci++) if (owner[cellsOf[ci][0]] === IDX[sel] || multi.has(ci) && Array.from(cellsOf[ci]).some(i => owner[i] === IDX[sel])) c.stroke(RPATH[ci]); }
+  if (sel && G && G.n[sel] && pristine[IDX[sel]]) { c.strokeStyle = '#fff'; c.lineWidth = 2.4 / cam.s; c.stroke(RPATH[IDX[sel]]); }
   if (!G && pickSel) { c.strokeStyle = '#fff'; c.lineWidth = 2.4 / cam.s; c.stroke(RPATH[IDX[pickSel]]); }
 }
 let tokens = [];
@@ -841,8 +873,11 @@ function hud() {
   $('wars').innerHTML = warsOf(me).map(w => { const e = w.a === me ? w.b : w.a, r = power(me) / Math.max(1, power(e)), pct = Math.round(100 * r / (1 + r));
     return `<button class="war" data-k="${e}"><img src="${flagSrc(me)}" alt=""><span class="vs">VS</span><img src="${flagSrc(e)}" alt=""><span>${name(e)}</span>
       <span class="bar2" title="Fuerza total comparada"><i style="width:${pct}%"></i></span></button>`; }).join('') +
-    (G.wars.length ? `<div class="war world">🌍 ${G.wars.length} guerra${G.wars.length > 1 ? 's' : ''} en el mundo</div>` : '');
+    (enemiesOf(me).length >= 2 ? `<button class="war peace-all" data-peaceall>🕊️ PEDIR PAZ A TODOS (${enemiesOf(me).length})</button>` : '') +
+    (G.wars.length ? `<button class="war world" data-worldwars>🌍 ${G.wars.length} guerra${G.wars.length > 1 ? 's' : ''} en el mundo ›</button>` : '');
   $('wars').querySelectorAll('[data-k]').forEach(b => (b.onclick = () => openCountry(b.dataset.k)));
+  const ww = $('wars').querySelector('[data-worldwars]'); if (ww) ww.onclick = openWorldWars;
+  const pa = $('wars').querySelector('[data-peaceall]'); if (pa) pa.onclick = askPeaceAll;
   renderArmyBar(); updateNukeBtn();
 }
 const relLabel = r => (r >= 80 ? 'Excelente' : r >= 60 ? 'Buena' : r >= 40 ? 'Neutral' : r >= 20 ? 'Mala' : 'Hostil');
@@ -1017,7 +1052,9 @@ function openMe(t = 'res') {
       <div class="hint">Cada escuadrón es un círculo con tu bandera. Tocalo (o arrastrá un recuadro en computadora) y después tocá el mapa.</div></div>
       <div class="prod"><div class="row"><span>🪖 Soldados</span><b>${fmtInt(n.soldiers)} / ${fmtInt(cap)}</b></div><div class="row"><span>⭐ Calidad por soldado</span><b>×${quality(me).toFixed(2)}</b></div>
         <div class="row"><span>🏭 Producción pasiva</span><b>${n.bud.mil < 1 ? 'casi nula' : 'activa (sube MILITAR)'}</b></div></div>
-      <button class="btn warbtn" data-recruit ${n.soldiers + 10000 > cap || n.treasury < rc ? 'disabled' : ''}>🪖 RECLUTAR 10.000 YA (${money(rc)} del tesoro)</button>
+      <div class="acts">${[10000, 100000, 1000000].filter(m => m === 10000 || manpower(me) * .015 >= m * 2).map(m =>
+        `<button class="btn warbtn" data-recruit="${m}">🪖 RECLUTAR ${fmtInt(m)} (${money(recruitCost(me, m))})</button>`).join('')}</div>
+      <div class="hint">Llegan al instante a tu capital. Tope de soldados hoy: ${fmtInt(cap)}${warsOf(me).length ? '' : ' (en guerra se duplica)'}.</div>
       <div class="sec"><h3>🛒 EQUIPAMIENTO (con el tesoro · mejora la calidad)</h3><div class="ucards">${UK.map(k => {
         const U = UNITS[k], b1 = buy(me, k, 1, true), b10 = buy(me, k, 10, true);
         return `<div class="uc">${unitIcon(k)}<b>${fmtInt(n.eq[k])}</b><small>${U.n}<br>${U.desc}</small>
@@ -1066,7 +1103,12 @@ function openMe(t = 'res') {
   sb.querySelectorAll('[data-b]').forEach(b => (b.onclick = () => { const r = buy(me, b.dataset.b, +b.dataset.l); if (r.ok) { toast(`Pedido: ${UNITS[b.dataset.b].n} ×${b.dataset.l} · llega el ${dateOf(r.arr)}`); openMe('army'); hud(); } else toast(r.msg); }));
   const nb = sb.querySelector('[data-nukebuild]'); if (nb) nb.onclick = () => { const c = nukeCost(me); if (n.treasury < c) return toast('No alcanza el tesoro'); n.treasury -= c; n.nukeBuild = G.day + 120; toast(`☢️ Bomba en fabricación: lista el ${dateOf(n.nukeBuild)}`); openMe('army'); hud(); };
   const nl = sb.querySelector('[data-nukearm]'); if (nl) nl.onclick = () => { armNuke(); };
-  const rb = sb.querySelector('[data-recruit]'); if (rb) rb.onclick = () => { const c = recruitCost(me, 10000); if (n.treasury < c) return; n.treasury -= c; n.reserve += 10000; deploy(me); syncSoldiers(); toast('10.000 soldados nuevos en la capital'); openMe('army'); hud(); };
+  sb.querySelectorAll('[data-recruit]').forEach(rb => (rb.onclick = () => {
+    const m = +rb.dataset.recruit, c = recruitCost(me, m), cap = manpower(me) * (warsOf(me).length ? .015 : .008);
+    if (n.soldiers + m > cap) return toast(`No hay tanta gente para reclutar: el tope hoy es ${fmtInt(cap)} soldados`);
+    if (n.treasury < c) return toast(`Falta plata en el tesoro (cuesta ${money(c)})`);
+    n.treasury -= c; n.reserve += m; deploy(me); syncSoldiers(); toast(`${fmtInt(m)} soldados nuevos en la capital`); openMe('army'); hud();
+  }));
   sb.querySelectorAll('[data-r]').forEach(b => (b.onclick = () => {
     const ci = +b.dataset.r, mine = Array.from(cellsOf[ci]).filter(i => owner[i] === IDX[me]), d = mine.reduce((s, i) => s + dmg[i], 0) / Math.max(1, mine.length);
     const c = Q[PLAYABLE[ci]].gdp * (mine.length / cellsOf[ci].length) * d * .05; if (n.treasury < c) return toast('No alcanza el tesoro');
@@ -1133,6 +1175,46 @@ function showHelp() {
 }
 $('btnHelp').onclick = showHelp;
 $('btnNuke').onclick = () => { if (nukeMode) { nukeMode = false; updateNukeBtn(); toast('Bomba guardada'); } else armNuke(); };
+/* guerras del mundo */
+function openWorldWars() {
+  const was = speed; setSpeed(0); const me = G.me;
+  const rows = G.wars.slice().sort((a, b) => (b.a === me || b.b === me) - (a.a === me || a.b === me) || (power(b.a) + power(b.b)) - (power(a.a) + power(a.b)));
+  modal(`<h2>🌍 GUERRAS EN EL MUNDO (${G.wars.length})</h2>
+    ${enemiesOf(me).length >= 2 ? `<button class="btn good" data-pa>🕊️ PEDIR PAZ A TODOS MIS ENEMIGOS (${enemiesOf(me).length})</button>` : ''}
+    <div class="list wwlist">${rows.map(w => { const pa = power(w.a), pb = power(w.b, true), pct = Math.round(100 * pa / Math.max(1, pa + pb)), mine = w.a === me || w.b === me;
+      return `<button class="ww ${mine ? 'mine' : ''}" data-w="${w.a}|${w.b}"><span class="side"><img src="${flagSrc(w.a)}" alt="">${name(w.a)}</span><span class="vs">VS</span>
+        <span class="side r">${name(w.b)}<img src="${flagSrc(w.b)}" alt=""></span><span class="pb"><i style="width:${pct}%"></i></span>
+        <small>desde ${dateOf(w.day)} · ${pct >= 55 ? 'gana ' + name(w.a) : pct <= 45 ? 'gana ' + name(w.b) : 'parejo'}</small></button>`; }).join('') || '<div class="hint">No hay guerras.</div>'}</div>
+    <div class="acts"><button class="btn primary" data-x>CERRAR</button></div>`, (el, close) => {
+    el.querySelector('[data-x]').onclick = () => { close(); setSpeed(was); };
+    const pa = el.querySelector('[data-pa]'); if (pa) pa.onclick = () => { close(); setSpeed(was); askPeaceAll(); };
+    el.querySelectorAll('[data-w]').forEach(b => (b.onclick = () => { close(); setSpeed(was); const [a, c] = b.dataset.w.split('|'); const k = a === me ? c : c === me ? a : a; if (G.n[k]) { openCountry(k); flyTo(bbOfOwner(k), 1.3); } }));
+  });
+}
+function bbOfOwner(k) { ensureTerritory(); const o = IDX[k]; if (pristine[o]) return RBB[o]; const cs = compsOf.get(o) || []; return cs.length ? cs[0].bb : RBB[o]; }
+// pedir la paz a todos a la vez: cada uno decide, y el humor del mundo hace que a veces acepten todos o nadie
+function askPeaceAll() {
+  const me = G.me, es = enemiesOf(me); if (es.length < 1) return;
+  if (G.day - (G.peaceAsk ?? -999) < 60) return toast(`Ya lo pediste hace poco: podés volver a intentarlo el ${dateOf(G.peaceAsk + 60)}`);
+  confirmBox(`🕊️ ¿Pedir la paz a tus ${es.length} enemigos?`, 'Cada país decide por su cuenta según cómo le va en la guerra, cuánto hace que pelean y cómo te ve. Puede pasar cualquier cosa. Si te rechazan, no podés volver a pedirlo por 60 días.', 'PEDIR LA PAZ', () => {
+    G.peaceAsk = G.day;
+    const roll = Math.random(), mood = roll < .12 ? 0 : roll > .88 ? 3 : .4 + Math.random() * 1.2; // 12 %: nadie acepta · 12 %: todos aceptan
+    const yes = [], no = [];
+    for (const e of es) {
+      const w = G.wars.find(w => (w.a === me && w.b === e) || (w.b === me && w.a === e)); if (!w) continue;
+      const ratio = power(me) / Math.max(1, power(e, true)), years = (G.day - w.day) / 365;
+      const p = clamp(.25 + .25 * (ratio - 1) + .15 * years + (relBase(me, e) - 50) / 200, .05, .85) * mood;
+      (Math.random() < Math.min(.97, p) ? yes : no).push(e);
+    }
+    yes.forEach(e => makePeace(me, e));
+    if (!no.length) G.peaceAsk = -999; // si todos aceptaron, no hay espera
+    const fl = l => l.map(k => `<span class="chipflag"><img src="${flagSrc(k)}" alt="">${name(k)}</span>`).join('');
+    modal(`<div class="event-tag">RESPUESTA DE TUS ENEMIGOS</div><h2>${!yes.length ? '❌ Nadie quiso la paz' : !no.length ? '🕊️ ¡Todos aceptaron la paz!' : `🕊️ ${yes.length} aceptaron · ${no.length} siguen en guerra`}</h2>
+      ${yes.length ? `<p><b>Aceptaron:</b></p><div class="flags">${fl(yes)}</div>` : ''}${no.length ? `<p><b>Rechazaron:</b></p><div class="flags">${fl(no)}</div>` : ''}
+      <div class="acts"><button class="btn primary" data-ok>ENTENDIDO</button></div>`, (el, close) => { el.querySelector('[data-ok]').onclick = close; });
+    hud();
+  });
+}
 /* estadísticas de todos los países */
 let statSort = 'pow', statFilter = 'all', statWas = 0;
 const STAT_COLS = [['rk', '#'], ['name', 'PAÍS'], ['pow', '⚔️ PODER'], ['sold', '🪖 SOLDADOS'], ['q', '⭐ CALIDAD'], ['gdp', '📈 PBI'], ['share', '🏆 % PBI MUNDIAL'],
@@ -1225,7 +1307,7 @@ function startGame() {
   $('meFlag').src = flagSrc(G.me); $('meName').textContent = name(G.me);
   document.querySelector('#sFund').previousElementSibling.textContent = '🪖 SOLDADOS';
   document.querySelector('#sPower').previousElementSibling.textContent = '🏆 PBI MUNDIAL';
-  rebuildWarSet(); recomputeAgg(); updatePeaks(); rebuildMulti(); rebuildFrontiers(); syncSoldiers(); maskCache.clear(); dirty = true;
+  rebuildWarSet(); recomputeAgg(); updatePeaks(); rebuildMulti(); rebuildFrontiers(); syncSoldiers(); dirty = true;
   if (!G.n[G.me]) showDefeat(G.dead || alive()[0]); else flyTo(RBB[IDX[G.me]], 1.4);
   hud(); setSpeed(0);
   history.pushState({ game: 1 }, ''); // el gesto de "atrás" abre el menú en vez de sacarte del juego

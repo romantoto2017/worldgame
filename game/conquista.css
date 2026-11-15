@@ -196,7 +196,7 @@ html:has(body.conq), body.conq { overscroll-behavior: none; touch-action: none; 
 @keyframes nukePulse { 70% { box-shadow: 0 0 0 14px rgba(255,80,40,0); } }
 
 /* estadísticas */
-.stats-card { width: min(1120px, calc(100vw - 24px)); max-height: calc(100% - 24px); display: flex; flex-direction: column; gap: 10px; padding: 16px; }
+.stats-card { width: min(1120px, calc(100vw - 24px)); max-height: calc(100vh - 24px); max-height: calc(100dvh - 24px); overflow: hidden; display: flex; flex-direction: column; gap: 10px; padding: 16px; }
 .stats-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .stats-head h2 { font-family: var(--head); font-weight: 400; font-size: 24px; letter-spacing: .03em; }
 .tbl-wrap { overflow: auto; min-height: 0; flex: 1 1 auto; border-radius: 10px; border: 1px solid var(--line); touch-action: pan-x pan-y; overscroll-behavior: contain; }
@@ -216,3 +216,18 @@ html:has(body.conq), body.conq { overscroll-behavior: none; touch-action: none; 
 #statsTbl th:nth-child(2) { z-index: 3; background: var(--card2); }
 #statsTbl th { z-index: 2; }
 #statsTbl tr.mine td:nth-child(2) { background: #2b2a24; }
+
+/* guerras del mundo y paz general */
+.war.world, .war.peace-all { cursor: pointer; text-align: left; }
+.war.peace-all { border-color: rgba(54,226,123,.6); background: rgba(19,92,56,.92); }
+.wwlist { max-height: 55vh; overflow-y: auto; touch-action: pan-y; overscroll-behavior: contain; }
+.ww { display: grid; grid-template-columns: 1fr auto 1fr; gap: 4px 8px; align-items: center; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; font: 700 12.5px Inter, sans-serif; text-align: left; }
+.ww.mine { border-color: rgba(255,200,58,.6); }
+.ww .side { display: flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; white-space: nowrap; }
+.ww .side.r { justify-content: flex-end; } .ww img { height: 14px; width: auto; max-width: 22px; border-radius: 2px; }
+.ww .vs { color: var(--red); font-weight: 800; font-size: 11px; }
+.ww .pb { grid-column: 1 / -1; height: 6px; border-radius: 3px; background: #4a1c1c; overflow: hidden; } .ww .pb i { display: block; height: 100%; background: var(--blue); }
+.ww small { grid-column: 1 / -1; color: var(--muted); font-size: 11px; }
+.flags { display: flex; flex-wrap: wrap; gap: 6px; }
+.chipflag { display: inline-flex; align-items: center; gap: 6px; background: var(--bg); border-radius: 8px; padding: 5px 8px; font-weight: 700; font-size: 12.5px; }
+.chipflag img { height: 13px; width: auto; max-width: 20px; border-radius: 2px; }
