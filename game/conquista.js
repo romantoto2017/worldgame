@@ -100,7 +100,7 @@ function flagRect(bb, center, c) {
   let fw = w, fh = w / a; if (fh < h) { fh = h; fw = h * a; }
   return [clamp(center[0] - fw / 2, bb[2] - fw, bb[0]), clamp(center[1] - fh / 2, bb[3] - fh, bb[1]), fw, fh];
 }
-const flagImg = {}, flagLo = {}, flagMid = new Map();
+const flagImg = {}, flagLo = {}, flagMid = new Map(); let flagsReady = 0;
 const loadFlags = () => Promise.all(PLAYABLE.map(c => new Promise(res => {
   const img = new Image(); img.onload = () => { flagImg[c] = img; flagLo[c] = raster(img, c, 200); res(); }; img.onerror = res; img.src = flagSrc(c);
 })));
@@ -189,6 +189,9 @@ let owner = new Uint8Array(NC), dmg = new Float32Array(NC);
 const cellGdp = new Float32Array(NC), cellPop = new Float32Array(NC);
 const alive = () => Object.keys(G.n);
 const SAVE = 'empire.conq3';
+const WINS = 'empire.wins'; // { país: veces que ganaste con él }
+const loadWins = () => { try { return JSON.parse(localStorage.getItem(WINS)) || {}; } catch { return {}; } };
+function recordWin() { if (!G || G.winRec) return; G.winRec = 1; const w = loadWins(); w[G.me] = (w[G.me] || 0) + 1; try { localStorage.setItem(WINS, JSON.stringify(w)); } catch {} }
 const gdppc = k => Q[k].gdp * 1e9 / Math.max(1, Q[k].pop);
 function initialEquip(k) {
   const [per, tank, air, art, heli, ship] = Q[k].mil, inf = per * 1000;
@@ -318,34 +321,39 @@ function syncSoldiers() { for (const k of alive()) G.n[k].soldiers = G.n[k].rese
 /* ======================= TERRITORIO ======================= */
 // los países intactos se dibujan con su contorno real; los que ganaron o perdieron tierra, como una sola
 // mancha por masa de tierra contigua con su bandera estirada encima (las fronteras internas desaparecen, como en la ruleta)
-const dirtyOwners = new Set(), pristine = new Uint8Array(NI), compsOf = new Map(), seen = new Uint32Array(NC); let stamp = 0, borderPath = null;
+const dirtyOwners = new Set(), pristine = new Uint8Array(NI), ownMask = new Map(), seen = new Uint32Array(NC); let stamp = 0, borderPath = null, pristineVer = 0;
 function rebuildMulti() { for (let o = 0; o < NI; o++) dirtyOwners.add(o); borderPath = null; }
-function makeComp(cells) {
-  let gx0 = 1e9, gy0 = 1e9, gx1 = -1, gy1 = -1, sx = 0, sy = 0;
-  for (const i of cells) { const x = i % NX, y = (i / NX) | 0; if (x < gx0) gx0 = x; if (x > gx1) gx1 = x; if (y < gy0) gy0 = y; if (y > gy1) gy1 = y; sx += x; sy += y; }
-  const gw = gx1 - gx0 + 1, gh = gy1 - gy0 + 1, cv = document.createElement('canvas'); cv.width = gw; cv.height = gh;
-  const c = cv.getContext('2d'), im = c.createImageData(gw, gh);
-  for (const i of cells) im.data[((((i / NX) | 0) - gy0) * gw + (i % NX) - gx0) * 4 + 3] = 255;
-  c.putImageData(im, 0, 0);
-  return { cv, n: cells.length, bb: [gx0 * CS, gy0 * CS, (gx1 + 1) * CS, (gy1 + 1) * CS], c: [(sx / cells.length + .5) * CS, (sy / cells.length + .5) * CS] };
-}
-function components(o, cells) { // masas de tierra contiguas de un dueño
-  stamp++; const out = [];
+// máscara de todos los puntos de un dueño (un solo lienzo que se reutiliza) y sus masas de tierra contiguas
+function buildOwner(o, cells) {
+  let m = ownMask.get(o); if (!m) { const cv = document.createElement('canvas'); m = { cv, ctx: cv.getContext('2d'), im: null, comps: [] }; ownMask.set(o, m); }
+  if (!cells.length) { m.comps = []; return; }
+  let gx0 = 1e9, gy0 = 1e9, gx1 = -1, gy1 = -1;
+  for (const i of cells) { const x = i % NX, y = (i / NX) | 0; if (x < gx0) gx0 = x; if (x > gx1) gx1 = x; if (y < gy0) gy0 = y; if (y > gy1) gy1 = y; }
+  const gw = gx1 - gx0 + 1, gh = gy1 - gy0 + 1;
+  if (m.cv.width !== gw || m.cv.height !== gh) { m.cv.width = gw; m.cv.height = gh; m.im = m.ctx.createImageData(gw, gh); } else m.im.data.fill(0);
+  for (const i of cells) m.im.data[((((i / NX) | 0) - gy0) * gw + (i % NX) - gx0) * 4 + 3] = 255;
+  m.ctx.putImageData(m.im, 0, 0);
+  m.bb = [gx0 * CS, gy0 * CS, (gx1 + 1) * CS, (gy1 + 1) * CS];
+  // masas de tierra contiguas: cada una lleva su bandera, como en la ruleta
+  stamp++; const comps = [];
   for (const s0 of cells) {
-    if (seen[s0] === stamp) continue; const comp = [s0]; seen[s0] = stamp;
-    for (let h = 0; h < comp.length; h++) { const i = comp[h], x = i % NX;
-      for (const j of [x > 0 ? i - 1 : -1, x < NX - 1 ? i + 1 : -1, i - NX, i + NX]) if (j >= 0 && j < NC && owner[j] === o && seen[j] !== stamp) { seen[j] = stamp; comp.push(j); } }
-    out.push(makeComp(comp));
+    if (seen[s0] === stamp) continue; seen[s0] = stamp; const q = [s0];
+    let x0 = 1e9, y0 = 1e9, x1 = -1, y1 = -1, sx = 0, sy = 0;
+    for (let h = 0; h < q.length; h++) { const i = q[h], x = i % NX, y = (i / NX) | 0;
+      if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; sx += x; sy += y;
+      for (const j of [x > 0 ? i - 1 : -1, x < NX - 1 ? i + 1 : -1, i - NX, i + NX]) if (j >= 0 && j < NC && owner[j] === o && seen[j] !== stamp) { seen[j] = stamp; q.push(j); } }
+    comps.push({ n: q.length, bb: [x0 * CS, y0 * CS, (x1 + 1) * CS, (y1 + 1) * CS], c: [(sx / q.length + .5) * CS, (sy / q.length + .5) * CS] });
   }
-  return out.sort((a, b) => b.n - a.n);
+  m.comps = comps.sort((a, b) => b.n - a.n);
 }
 function ensureTerritory() {
   if (dirtyOwners.size) {
     const list = new Map(); for (const o of dirtyOwners) list.set(o, []);
     for (const i of LAND) { const l = list.get(owner[i]); if (l) l.push(i); }
     for (const [o, cells] of list) {
-      const own = cellsOf[o]; pristine[o] = cells.length === own.length && own.every(i => owner[i] === o) ? 1 : 0;
-      compsOf.set(o, pristine[o] || !cells.length ? [] : components(o, cells));
+      const own = cellsOf[o], was = pristine[o]; pristine[o] = cells.length === own.length && own.every(i => owner[i] === o) ? 1 : 0;
+      if (was !== pristine[o]) pristineVer++;
+      if (pristine[o] || !cells.length) { const m = ownMask.get(o); if (m) m.comps = []; } else buildOwner(o, cells);
     }
     dirtyOwners.clear(); borderPath = null;
   }
@@ -363,7 +371,7 @@ function flip(i, to, by) {
   const from = owner[i]; if (from === to) return;
   owner[i] = to; dmg[i] = Math.min(1, dmg[i] + .3);
   dirtyOwners.add(from); dirtyOwners.add(to); borderPath = null;
-  agg.cells[from]--; agg.cells[to]++; dirty = true; G.terrDirty = true;
+  agg.cells[from]--; agg.cells[to]++; terrPending = true; G.terrDirty = true;
   const sh = cellGdp[i] / Math.max(1, worldGdp()) * 100; if (PLAYABLE[to] === G.me) G.ae += sh; else G.aeN[PLAYABLE[to]] = (G.aeN[PLAYABLE[to]] || 0) + sh;
   const kf = PLAYABLE[from], nf = G.n[kf]; if (!nf) return;
   if (agg.cells[from] <= 0) return capitulate(kf, PLAYABLE[to]);
@@ -551,7 +559,7 @@ function dayTick() {
   produce();
   if (G.day % 15 === 0) alive().forEach(deploy);
   moveSquads(); combat(); annex(); syncSoldiers();
-  if (G.day % 5 === 0 || G.terrDirty) { rebuildFrontiers(); G.terrDirty = false; }
+  if (G.day % 5 === 0 || (G.terrDirty && G.day % 2 === 0)) { rebuildFrontiers(); G.terrDirty = false; }
   for (const s of G.sq) if (s.auto && s.tx == null && !s.eng) autoTarget(s);
   for (const k of alive()) if (k !== G.me && (G.day + IDX[k]) % 5 === 0) aiSquads(k);
   G.tension = clamp(G.tension + .015, 0, 100);
@@ -735,7 +743,8 @@ function randomEvent() {
 }
 
 /* ======================= RENDER ======================= */
-const mapCv = $('map'), ctx = mapCv.getContext('2d'), baseCv = document.createElement('canvas'), bctx = baseCv.getContext('2d');
+// el mapa se dibuja directo en #map y los escuadrones en #fx encima: así no hay que copiar el mapa entero en cada cuadro
+const mapCv = $('map'), baseCv = mapCv, bctx = mapCv.getContext('2d'), fxCv = $('fx'), ctx = fxCv.getContext('2d');
 const tmpCv = document.createElement('canvas'), tctx = tmpCv.getContext('2d');
 let vw = 0, vh = 0, dpr = 1, dirty = true;
 const cam = { x: W / 2, y: H / 2, s: 1 };
@@ -743,7 +752,8 @@ const minS = () => Math.min(vw / W, vh / H) * 0.95;
 function clampCam() { cam.s = clamp(cam.s, minS(), minS() * 80); cam.x = clamp(cam.x, 0, W); cam.y = clamp(cam.y, 0, H); dirty = true; }
 function resize() {
   dpr = Math.min(2, window.devicePixelRatio || 1); vw = innerWidth; vh = innerHeight;
-  for (const c of [mapCv, baseCv, layerCv]) { c.width = Math.round(vw * dpr); c.height = Math.round(vh * dpr); }
+  for (const c of [mapCv, fxCv, layerCv, prisCv, tmpCv]) { c.width = Math.round(vw * dpr); c.height = Math.round(vh * dpr); }
+  prisKey = '';
   if (!cam.init) { cam.s = Math.min(vw / W, vh / H) * 1.1; cam.init = true; }
   clampCam();
 }
@@ -760,49 +770,68 @@ const toScreen = (x, y) => [(x - cam.x) * cam.s + vw / 2, (y - cam.y) * cam.s + 
 const setT = c => { const k = cam.s * dpr; c.setTransform(k, 0, 0, k, (vw / 2 - cam.x * cam.s) * dpr, (vh / 2 - cam.y * cam.s) * dpr); };
 const LANDPATH = new Path2D(); RPATH.forEach(p => LANDPATH.addPath(p));
 const layerCv = document.createElement('canvas'), lctx = layerCv.getContext('2d');
+const prisCv = document.createElement('canvas'), pctx = prisCv.getContext('2d'); let prisKey = '';
+let terrPending = false, lastTerr = 0;
 function drawFlagIn(c, k, bb, center) { const sw = (bb[2] - bb[0]) * cam.s, img = sw > 260 ? midFlag(k) : flagLo[k]; if (img) c.drawImage(img, ...flagRect(bb, center, k)); }
-function drawComp(target, comp, k, tint) { // máscara de puntos × bandera, compuesta en pantalla
-  const [sx0, sy0] = toScreen(comp.bb[0] - CS, comp.bb[1] - CS), [sx1, sy1] = toScreen(comp.bb[2] + CS, comp.bb[3] + CS);
+// pinta un dueño que cambió: su máscara de puntos × su bandera (una por masa de tierra), compuesto en un lienzo fijo
+function drawOwner(target, k, m, tint) {
+  const [sx0, sy0] = toScreen(m.bb[0] - CS, m.bb[1] - CS), [sx1, sy1] = toScreen(m.bb[2] + CS, m.bb[3] + CS);
   const rx = Math.max(0, Math.floor(sx0)), ry = Math.max(0, Math.floor(sy0)), rw = Math.min(vw, Math.ceil(sx1)) - rx, rh = Math.min(vh, Math.ceil(sy1)) - ry;
   if (rw <= 0 || rh <= 0) return;
-  tmpCv.width = Math.ceil(rw * dpr); tmpCv.height = Math.ceil(rh * dpr);
-  tctx.setTransform(dpr, 0, 0, dpr, -rx * dpr, -ry * dpr); tctx.imageSmoothingEnabled = true;
-  const [mx0, my0] = toScreen(comp.bb[0], comp.bb[1]), [mx1, my1] = toScreen(comp.bb[2], comp.bb[3]);
-  tctx.drawImage(comp.cv, mx0, my0, mx1 - mx0, my1 - my0);
+  const dx = Math.floor(rx * dpr), dy = Math.floor(ry * dpr), dw = Math.ceil(rw * dpr) + 1, dh = Math.ceil(rh * dpr) + 1;
+  tctx.setTransform(1, 0, 0, 1, 0, 0); tctx.globalCompositeOperation = 'source-over'; tctx.clearRect(dx, dy, dw, dh);
+  tctx.save(); tctx.beginPath(); tctx.rect(dx, dy, dw, dh); tctx.clip();
+  tctx.setTransform(dpr, 0, 0, dpr, 0, 0); tctx.imageSmoothingEnabled = true;
+  const [mx0, my0] = toScreen(m.bb[0], m.bb[1]), [mx1, my1] = toScreen(m.bb[2], m.bb[3]);
+  tctx.drawImage(m.cv, mx0, my0, mx1 - mx0, my1 - my0);
   tctx.globalCompositeOperation = 'source-in';
   if (tint) { tctx.fillStyle = tint; tctx.fillRect(rx, ry, rw, rh); }
-  else { const [cx, cy] = toScreen(comp.c[0], comp.c[1]), img = (mx1 - mx0) > 260 ? midFlag(k) : flagLo[k]; if (img) tctx.drawImage(img, ...flagRect([mx0, my0, mx1, my1], [cx, cy], k)); }
-  tctx.globalCompositeOperation = 'source-over';
-  target.drawImage(tmpCv, rx * dpr, ry * dpr);
+  else for (const comp of m.comps) {
+    const [a0, b0] = toScreen(comp.bb[0], comp.bb[1]), [a1, b1] = toScreen(comp.bb[2], comp.bb[3]);
+    if (a1 < 0 || b1 < 0 || a0 > vw || b0 > vh || (a1 - a0 < .5 && b1 - b0 < .5)) continue;
+    const [cx, cy] = toScreen(comp.c[0], comp.c[1]), img = (a1 - a0) > 260 ? midFlag(k) : flagLo[k]; if (!img) continue;
+    tctx.save(); tctx.beginPath(); const pad = CS * cam.s; tctx.rect(a0 - pad, b0 - pad, a1 - a0 + 2 * pad, b1 - b0 + 2 * pad); tctx.clip();
+    tctx.drawImage(img, ...flagRect([a0, b0, a1, b1], [cx, cy], k)); tctx.restore();
+  }
+  tctx.restore(); tctx.globalCompositeOperation = 'source-over';
+  target.drawImage(tmpCv, dx, dy, dw, dh, dx, dy, dw, dh);
 }
-function renderBase() {
-  const c = bctx;
-  c.setTransform(1, 0, 0, 1, 0, 0); c.fillStyle = '#101a27'; c.fillRect(0, 0, baseCv.width, baseCv.height);
+// capa de fondo + países intactos: solo cambia si se mueve la cámara o algún país deja de estar intacto
+function renderPristine(x0, y0, x1, y1) {
+  const key = [cam.x, cam.y, cam.s, vw, vh, dpr, G ? pristineVer : -1, G ? 1 : 0, flagsReady].join();
+  if (key === prisKey) return; prisKey = key;
+  const c = pctx, off = b => b[2] < x0 || b[0] > x1 || b[3] < y0 || b[1] > y1;
+  c.setTransform(1, 0, 0, 1, 0, 0); c.fillStyle = '#101a27'; c.fillRect(0, 0, prisCv.width, prisCv.height);
   setT(c);
-  const x0 = cam.x - vw / 2 / cam.s, x1 = cam.x + vw / 2 / cam.s, y0 = cam.y - vh / 2 / cam.s, y1 = cam.y + vh / 2 / cam.s;
-  const off = b => b[2] < x0 || b[0] > x1 || b[3] < y0 || b[1] > y1;
   c.strokeStyle = 'rgba(255,255,255,.035)'; c.lineWidth = 1 / cam.s; c.beginPath();
   const step = W / 40;
   for (let x = Math.floor(x0 / step) * step; x < x1; x += step) { c.moveTo(x, y0); c.lineTo(x, y1); }
   for (let y = Math.floor(y0 / step) * step; y < y1; y += step) { c.moveTo(x0, y); c.lineTo(x1, y); }
   c.stroke();
   c.fillStyle = '#3a4352'; c.fill(grayPath);
-  if (G) ensureTerritory();
-  // países intactos: bandera recortada por su contorno real
   for (let ci = 0; ci < NI; ci++) {
     if ((G && !pristine[ci]) || off(RBB[ci])) continue; const k = PLAYABLE[ci];
     for (const p of RP[ci]) { if ((p.bb[2] - p.bb[0]) * cam.s < .6 && (p.bb[3] - p.bb[1]) * cam.s < .6) continue;
       c.save(); c.clip(p.path); drawFlagIn(c, k, p.bb, p.c); c.restore(); }
   }
+  c.strokeStyle = 'rgba(8,12,20,.55)'; c.lineWidth = .8 / cam.s;
+  for (let ci = 0; ci < NI; ci++) if ((!G || pristine[ci]) && !off(RBB[ci])) c.stroke(RPATH[ci]);
+}
+function renderBase() {
+  const c = bctx;
+  const x0 = cam.x - vw / 2 / cam.s, x1 = cam.x + vw / 2 / cam.s, y0 = cam.y - vh / 2 / cam.s, y1 = cam.y + vh / 2 / cam.s;
+  const off = b => b[2] < x0 || b[0] > x1 || b[3] < y0 || b[1] > y1;
+  if (G) ensureTerritory();
+  renderPristine(x0, y0, x1, y1);
+  c.setTransform(1, 0, 0, 1, 0, 0); c.drawImage(prisCv, 0, 0);
   if (G) {
     // países que cambiaron: una bandera por masa de tierra, sin fronteras internas
     lctx.setTransform(1, 0, 0, 1, 0, 0); lctx.clearRect(0, 0, layerCv.width, layerCv.height);
-    for (const k of alive()) { const o = IDX[k]; if (pristine[o]) continue; for (const comp of compsOf.get(o) || []) if (!off(comp.bb)) drawComp(lctx, comp, k); }
-    if (sel && G.n[sel] && !pristine[IDX[sel]]) for (const comp of compsOf.get(IDX[sel]) || []) if (!off(comp.bb)) drawComp(lctx, comp, sel, 'rgba(255,255,255,.22)');
-    c.save(); c.clip(LANDPATH); c.setTransform(1, 0, 0, 1, 0, 0); c.drawImage(layerCv, 0, 0); c.restore(); setT(c);
+    for (const k of alive()) { const o = IDX[k]; if (pristine[o]) continue; const m = ownMask.get(o); if (m && m.comps.length && !off(m.bb)) drawOwner(lctx, k, m); }
+    if (sel && G.n[sel] && !pristine[IDX[sel]]) { const m = ownMask.get(IDX[sel]); if (m && m.comps.length) drawOwner(lctx, sel, m, 'rgba(255,255,255,.22)'); }
+    c.save(); setT(c); c.clip(LANDPATH); c.setTransform(1, 0, 0, 1, 0, 0); c.drawImage(layerCv, 0, 0); c.restore();
   }
-  c.strokeStyle = 'rgba(8,12,20,.55)'; c.lineWidth = .8 / cam.s;
-  for (let ci = 0; ci < NI; ci++) if ((!G || pristine[ci]) && !off(RBB[ci])) c.stroke(RPATH[ci]);
+  setT(c);
   if (G && borderPath) { c.strokeStyle = 'rgba(8,12,20,.5)'; c.lineWidth = .9 / cam.s; c.stroke(borderPath); }
   if (G && G.n[G.me]) { // mi territorio: borde dorado (puntos de frontera)
     c.fillStyle = 'rgba(255,200,58,.55)';
@@ -811,12 +840,20 @@ function renderBase() {
   if (sel && G && G.n[sel] && pristine[IDX[sel]]) { c.strokeStyle = '#fff'; c.lineWidth = 2.4 / cam.s; c.stroke(RPATH[IDX[sel]]); }
   if (!G && pickSel) { c.strokeStyle = '#fff'; c.lineWidth = 2.4 / cam.s; c.stroke(RPATH[IDX[pickSel]]); }
 }
+function drawStar(c, x, y, r) {
+  c.beginPath(); for (let j = 0; j < 10; j++) { const a = -Math.PI / 2 + j * Math.PI / 5, rr = j % 2 ? r * .45 : r; c.lineTo(x + rr * Math.cos(a), y + rr * Math.sin(a)); } c.closePath();
+  c.fillStyle = '#ffc83a'; c.strokeStyle = 'rgba(10,14,22,.9)'; c.lineWidth = 2.5; c.lineJoin = 'round'; c.stroke(); c.fill();
+}
 let tokens = [];
 function render(now) {
-  if (dirty) { dirty = false; renderBase(); }
-  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(baseCv, 0, 0);
+  if (dirty || (terrPending && now - lastTerr > 200)) { dirty = false; terrPending = false; lastTerr = now; renderBase(); }
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, fxCv.width, fxCv.height);
   tokens = [];
-  if (!G) return;
+  if (!G) { // estrellas doradas sobre los países con los que ya ganaste
+    ctx.save(); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    for (const k of Object.keys(pickWins)) { if (IDX[k] == null) continue; const [x, y] = toScreen(...RP[IDX[k]][0].c); if (x < -20 || y < -20 || x > vw + 20 || y > vh + 20) continue; drawStar(ctx, x, y, 11); }
+    ctx.restore(); return;
+  }
   const f = dayFrac(), me = G.me, zoomed = cam.s > minS() * 3;
   ctx.save(); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   // explosiones nucleares
@@ -1147,13 +1184,14 @@ function showDefeat(by) {
   });
 }
 function showWin50() {
-  setSpeed(0);
+  setSpeed(0); recordWin();
   modal(`<img src="${flagSrc(G.me)}" alt="" style="width:140px;border-radius:8px"><h2>¡DOMINÁS EL MUNDO!</h2><p>Controlás más de la mitad del PBI mundial (${dateOf(G.day)}). Podés seguir hasta que no quede nadie.</p>
     <div class="acts"><button class="btn" data-c>SEGUIR JUGANDO</button><button class="btn primary" data-n>NUEVA PARTIDA</button></div>`, (el, close) => {
     el.querySelector('[data-c]').onclick = close; el.querySelector('[data-n]').onclick = () => { leaving = true; try { localStorage.removeItem(SAVE); } catch {} location.reload(); };
   });
 }
 function showVictory(w) {
+  if (w === G.me) recordWin();
   try { localStorage.removeItem(SAVE); } catch {}
   modal(`<img src="${flagSrc(w)}" alt="" style="width:140px;border-radius:8px"><h2>${w === G.me ? '¡CONQUISTASTE EL MUNDO!' : `¡${up(name(w))} CONQUISTÓ EL MUNDO!`}</h2><p>${dateOf(G.day)}</p>
     <div class="acts"><button class="btn primary" data-n>NUEVA PARTIDA</button></div>`, el => { el.querySelector('[data-n]').onclick = () => { leaving = true; location.reload(); }; });
@@ -1191,7 +1229,7 @@ function openWorldWars() {
     el.querySelectorAll('[data-w]').forEach(b => (b.onclick = () => { close(); setSpeed(was); const [a, c] = b.dataset.w.split('|'); const k = a === me ? c : c === me ? a : a; if (G.n[k]) { openCountry(k); flyTo(bbOfOwner(k), 1.3); } }));
   });
 }
-function bbOfOwner(k) { ensureTerritory(); const o = IDX[k]; if (pristine[o]) return RBB[o]; const cs = compsOf.get(o) || []; return cs.length ? cs[0].bb : RBB[o]; }
+function bbOfOwner(k) { ensureTerritory(); const o = IDX[k]; if (pristine[o]) return RBB[o]; const m = ownMask.get(o); return m && m.comps.length ? m.comps[0].bb : RBB[o]; }
 // pedir la paz a todos a la vez: cada uno decide, y el humor del mundo hace que a veces acepten todos o nadie
 function askPeaceAll() {
   const me = G.me, es = enemiesOf(me); if (es.length < 1) return;
@@ -1274,24 +1312,28 @@ function setupPick() {
     FACT[k] = { mil: 100 * Math.log10(s.P + 1) / Math.log10(mP + 1), eco: 100 * Math.log10(s.gdp * 1000 + 1) / Math.log10(mG * 1000 + 1), qol: s.qol,
       al: s.allies ? 100 * Math.log10(s.allies + 1) / Math.log10(mA + 1) : 0, th: s.threat ? clamp(100 * Math.log10(1 + s.threat / (s.P + 1)) / 1.5, 3, 100) : 0 }; });
   G = null; resetCells();
-  const list = $('pickList');
+  const list = $('pickList'), wins = loadWins(), wonN = Object.keys(wins).filter(k => C[k]).length, total = Object.values(wins).reduce((a, b) => a + b, 0);
+  const wb = $('winsBadge'); wb.hidden = !wonN;
+  if (wonN) wb.innerHTML = `<span class="big">🏆 ${wonN}</span><span>${wonN === 1 ? 'país con el que ganaste' : 'países con los que ganaste'}${total > wonN ? ` · ${total} victorias en total` : ''}<br><small>Los marcados con ⭐ ya los conquistaste</small></span>`;
   const draw = () => {
     const q = $('pickSearch').value.trim().toLowerCase();
     list.innerHTML = RANK.map((k, i) => [k, i]).filter(([k]) => !q || name(k).toLowerCase().includes(q)).map(([k, i]) => { const [d, l] = difficulty(i);
-      return `<button class="prow ${pickSel === k ? 'on' : ''}" data-k="${k}" role="option"><span class="rk">#${i + 1}</span><img src="${flagSrc(k)}" alt=""><span>${name(k)}</span><span class="diff d${d}">${l}</span></button>`; }).join('');
+      return `<button class="prow ${pickSel === k ? 'on' : ''}" data-k="${k}" role="option"><span class="rk">#${i + 1}</span><img src="${flagSrc(k)}" alt=""><span>${wins[k] ? '<span class="star" title="Ya ganaste con este país">⭐</span>' : ''}${name(k)}</span><span class="diff d${d}">${l}</span></button>`; }).join('');
     list.querySelectorAll('[data-k]').forEach(b => (b.onclick = () => choose(b.dataset.k)));
   };
+  pickWins = wins;
   $('pickSearch').oninput = draw; draw(); pickDraw = draw;
   let s = null; try { s = JSON.parse(localStorage.getItem(SAVE)); } catch {}
   $('btnLoad').hidden = !s;
   $('btnLoad').onclick = () => { G = loadGame(s); startGame(); };
   $('btnStart').onclick = () => { G = newGame(pickSel); startGame(); };
 }
-let pickDraw = () => {};
+let pickDraw = () => {}, pickWins = {};
 function choose(k) {
   pickSel = k; $('btnStart').disabled = false; pickDraw();
   const i = RANK.indexOf(k), [d, l] = difficulty(i), q = Q[k], f = FACT[k];
-  $('pickInfo').innerHTML = `<b style="color:#fff">${name(k)}</b> · ${IDEO[IDEO0[k] || 'dem'].n} · puesto #${i + 1} · <span class="diff d${d}">${l}</span>
+  $('pickInfo').innerHTML = `<b style="color:#fff">${pickWins[k] ? '⭐ ' : ''}${name(k)}</b> · ${IDEO[IDEO0[k] || 'dem'].n} · puesto #${i + 1} · <span class="diff d${d}">${l}</span>
+    ${pickWins[k] ? `<div class="won">⭐ Ya ganaste con ${name(k)}${pickWins[k] > 1 ? ` (${pickWins[k]} veces)` : ''}</div>` : ''}
     <div class="factors">
       <span>⚔️ Ejército</span>${bar(f.mil, 'var(--red)')}<span>${fmtK(q.mil[0] * 1000)} sold.</span>
       <span>📈 Economía</span>${bar(f.eco, 'var(--blue)')}<span>${money(q.gdp)}</span>
@@ -1390,7 +1432,7 @@ function frame(now) {
   requestAnimationFrame(frame);
 }
 resize(); setupPick();
-loadFlags().then(() => (dirty = true));
+loadFlags().then(() => { flagsReady = 1; dirty = true; });
 requestAnimationFrame(frame);
 window.__conq = { nukeAt: (wx, wy) => { const [x, y] = toScreen(wx, wy); nukeMode = true; tap(x, y); }, get G() { return G; }, set G(v) { G = v; }, power, quality, rel, dayTick, declareWar, gdpOf, worldGdp, newGame, strengthScore, buy, orderTo, randomEvent, EVENTS,
   start: k => { G = newGame(k); rebuildWarSet(); recomputeAgg(); updatePeaks(); rebuildMulti(); rebuildFrontiers(); syncSoldiers(); }, owner, cellsOf, IDX, LAND, selected, sqOf, autoTarget, flip, NC };
